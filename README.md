@@ -14,13 +14,13 @@ A powerful terminal AI assistant powered by OpenRouter, providing contextual ass
 
 * Python 3.7+
 * Zsh shell
-* An OpenRouter API key (get one at [openrouter.ai](https://openrouter.ai/keys))
+* An OpenRouter API key (get one at [openrouter.ai](https://openrouter.ai/settings/keys))
 
 ## Setup
 
 1. **Clone the repository:**
    ```bash
-   git clone <repository_url>
+   git clone git@github.com:KristjanPikhof/AiTermy.git
    cd AiTermy
    ```
 
