@@ -138,8 +138,8 @@ done
 
 # --- 2.3 Get Preferred Model ---
 echo -e "${CYAN}Available models include:${NC}"
-echo -e "  ${WHITE}google/gemini-2.0-flash-001${NC} (fast responses & cost-effective)"
-echo -e "  ${WHITE}meta-llama/llama-4-scout${NC} (more capable & cost-effective)"
+echo -e "  ${WHITE}meta-llama/llama-4-scout${NC} (fast responses & cost-effective)"
+echo -e "  ${WHITE}google/gemini-2.0-flash-001${NC} (more capable & cost-effective)"
 echo -e "  ${WHITE}anthropic/claude-3.7-sonnet${NC} (most capable but expensive)"
 echo -e "  ${WHITE}google/gemini-2.5-pro-preview-03-25${NC} (balanced)"
 
