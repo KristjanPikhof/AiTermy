@@ -8,14 +8,16 @@ import argparse
 import logging
 import datetime
 import pathlib
+import pickle
 from dotenv import load_dotenv
 from rich.console import Console
 from rich.markdown import Markdown
 from rich.panel import Panel
 from rich.text import Text
+from rich.prompt import Confirm
 
 # Version information
-VERSION = "1.0.2"
+VERSION = "1.1.0"
 
 # Load environment variables from .env file
 load_dotenv()
@@ -28,6 +30,11 @@ DEFAULT_LINES = 10
 
 # Command Name (set during setup)
 COMMAND_NAME = os.environ.get("COMMAND_NAME", "aitermy") # Default if not set
+
+# Conversation history configuration
+CONVERSATION_DIR = os.path.expanduser("~/.aitermy/conversations")
+CURRENT_CONVERSATION_FILE = os.path.join(CONVERSATION_DIR, "current_conversation.pkl")
+MAX_CONVERSATION_TURNS = 10  # Maximum number of turns to keep in history
 
 # Logging configuration
 LOGGING_ENABLED = os.environ.get("LOGGING_ENABLED", "false").lower() == "true"
@@ -50,6 +57,9 @@ if LOGGING_ENABLED:
     logging.info(f"AiTermy v{VERSION} started")
     logging.info(f"Using model: {OPENROUTER_MODEL}")
 
+# Create conversation directory if it doesn't exist
+pathlib.Path(CONVERSATION_DIR).mkdir(parents=True, exist_ok=True)
+
 # Function to log messages if logging is enabled
 def log(message, level="INFO"):
     if LOGGING_ENABLED:
@@ -64,6 +74,36 @@ def log(message, level="INFO"):
 
 # Rich configurations
 console = Console()
+
+def load_conversation_history():
+    """Load the current conversation history if it exists"""
+    try:
+        if os.path.exists(CURRENT_CONVERSATION_FILE):
+            with open(CURRENT_CONVERSATION_FILE, 'rb') as f:
+                history = pickle.load(f)
+                log(f"Loaded conversation history with {len(history)} messages")
+                return history
+    except Exception as e:
+        log(f"Error loading conversation history: {e}", "ERROR")
+    return []  # Return empty history if file doesn't exist or on error
+
+def save_conversation_history(history):
+    """Save the current conversation history"""
+    try:
+        with open(CURRENT_CONVERSATION_FILE, 'wb') as f:
+            pickle.dump(history, f)
+            log(f"Saved conversation history with {len(history)} messages")
+    except Exception as e:
+        log(f"Error saving conversation history: {e}", "ERROR")
+
+def start_new_conversation():
+    """Clear the current conversation history"""
+    try:
+        if os.path.exists(CURRENT_CONVERSATION_FILE):
+            os.remove(CURRENT_CONVERSATION_FILE)
+            log("Started new conversation (cleared history)")
+    except Exception as e:
+        log(f"Error clearing conversation history: {e}", "ERROR")
 
 def get_terminal_context(lines, command_name):
     log(f"Getting terminal context with {lines} lines, filtering for command '{command_name}'")
@@ -131,7 +171,7 @@ def get_file_context(filename):
         log(f"Error reading file {filename}: {e}", "ERROR")
         return f"Error reading file {filename}: {e}"
 
-def query_openrouter(prompt):
+def query_openrouter(messages):
     log("Sending request to OpenRouter API")
     headers = {
         "Authorization": f"Bearer {OPENROUTER_API_KEY}",
@@ -140,12 +180,12 @@ def query_openrouter(prompt):
 
     data = {
         "model": OPENROUTER_MODEL,
-        "messages": [{"role": "user", "content": prompt}],
+        "messages": messages,
         "temperature": 0.7,
         "max_tokens": 1000 # Adjust as needed
     }
 
-    log(f"Request data: model={OPENROUTER_MODEL}, temperature=0.7, max_tokens=1000")
+    log(f"Request data: model={OPENROUTER_MODEL}, temperature=0.7, max_tokens=1000, messages_count={len(messages)}")
     
     try:
         log("Sending POST request to OpenRouter API")
@@ -182,12 +222,22 @@ termy "Your question here"
 * `-f, --file <filename>` - Include file content as context
 * `-h, --help` - Show this help message
 * `-v, --version` - Show version information
+* `-n, --new` - Start a new conversation (clear history)
+* `-c, --continue` - Explicitly continue previous conversation (same as default behavior)
+
+## Conversation Behavior
+* By default, `termy "question"` continues your previous conversation
+* Use `-n` to start a new conversation when needed
+* Use `-c` when you want to explicitly mark a question as continuing the conversation
+* Conversation history is stored in `~/.aitermy/conversations/`
 
 ## Examples
 ```
 termy "What does this error mean?" -l 20
 termy "Explain this code" -f app.js
 termy "How to fix this bug?" -l 10 -f error.log
+termy -n "Let's discuss a new topic"
+termy "Can you tell me more about that?" # Continues conversation by default
 ```
 
 ## Current Configuration
@@ -198,6 +248,7 @@ termy "How to fix this bug?" -l 10 -f error.log
 * For code-related questions, include the relevant file with -f
 * For error analysis, include terminal output with -l
 * You can combine both -l and -f for more context
+* Conversations are maintained automatically between commands
 """
     console.print(Panel(Markdown(help_text), title="AiTermy Help", border_style="cyan"))
 
@@ -212,12 +263,15 @@ def main():
     parser.add_argument("-f", "--file", type=str, help="Path to a file to include as context")
     parser.add_argument("-v", "--version", action='version', 
                         version=f'AiTermy v{VERSION} using {OPENROUTER_MODEL}')
+    parser.add_argument("-n", "--new", action='store_true', help="Start a new conversation")
+    parser.add_argument("-c", "--continue", dest='continue_convo', action='store_true', 
+                        help="Continue the previous conversation")
     
     args = parser.parse_args()
-    log(f"Parsed arguments: question={args.question}, lines={args.lines}, file={args.file}")
+    log(f"Parsed arguments: question={args.question}, lines={args.lines}, file={args.file}, new={args.new}, continue={args.continue_convo}")
 
     # Show detailed help if no arguments or with -h
-    if args.question is None and not (args.lines or args.file):
+    if args.question is None and not (args.lines or args.file or args.new or args.continue_convo):
         log("No question provided, showing help")
         show_help()
         return
@@ -260,56 +314,93 @@ Please check your .env file at:
         ))
         return
 
-    # Build the prompt
-    os_type = "macOS" if sys.platform == "darwin" else "Linux"
-    prompt = f"You are a helpful terminal assistant. You are running on {os_type}. Current location is {os.getcwd()}. "
-    prompt += "Provide concise, direct answers suitable for terminal output. Use Markdown formatting where appropriate (like code blocks), but avoid overly long paragraphs. Focus directly on the user's question."
-    log(f"Building prompt with OS type: {os_type}, current directory: {os.getcwd()}, and conciseness instructions")
+    # Handle conversation history
+    if args.new:
+        start_new_conversation()
+        log("Starting new conversation as requested")
     
-    # Add context information
+    conversation_history = load_conversation_history() if (args.continue_convo or not args.new) else []
+    
+    # Build the system message
+    os_type = "macOS" if sys.platform == "darwin" else "Linux"
+    system_message = f"You are a helpful terminal assistant. You are running on {os_type}. Current location is {os.getcwd()}. "
+    system_message += "Provide concise, direct answers suitable for terminal output. Use Markdown formatting where appropriate (like code blocks), but avoid overly long paragraphs. Focus directly on the user's question."
+    log(f"Building system message with OS type: {os_type}, current directory: {os.getcwd()}, and conciseness instructions")
+    
+    # Initialize messages with system message if no history
+    messages = []
+    if not conversation_history:
+        messages.append({"role": "system", "content": system_message})
+    else:
+        messages = conversation_history.copy()
+    
+    # Add context information to the user's question
+    user_prompt = ""
     context_added = False
     
-    if args.lines is not None:
-        # Pass the loaded COMMAND_NAME here
+    if args.lines is not None and not args.continue_convo:
+        # Only add terminal context for new questions, not continuations
         terminal_context = get_terminal_context(args.lines, COMMAND_NAME)
         if "Recent Terminal History" in terminal_context:
-            prompt += f"\n\n{terminal_context}"
+            user_prompt += f"\n\n{terminal_context}"
             context_added = True
     
     if args.file:
         file_context = get_file_context(args.file)
         if "File Content" in file_context:
-            prompt += f"\n\n{file_context}"
+            user_prompt += f"\n\n{file_context}"
             context_added = True
     
     # Add the user's question
-    prompt += f"\n\nQuestion: {args.question}"
-    log(f"Final prompt built with question: {args.question}")
-    
-    # Show a loading message
-    with console.status("[bold cyan]Thinking...[/bold cyan]", spinner="dots"):
-        log("Displaying 'Thinking...' status and querying OpenRouter")
-        # Query OpenRouter
-        response = query_openrouter(prompt)
-        answer = extract_model_response(response)
-
-    # Display response with rich
-    log("Displaying answer to user")
-    console.print("\n[bold cyan]Answer:[/bold cyan]\n")
-    console.print(Markdown(answer))  # Use Markdown for formatted output
-    
-    # Show context information that was used
-    if context_added:
-        context_info = []
-        if args.lines is not None:
-            context_info.append(f"{args.lines} lines of terminal output")
-        if args.file:
-            context_info.append(f"content from {args.file}")
+    if args.question:
+        user_prompt += f"\n\n{args.question}"
+        log(f"User prompt built with question: {args.question}")
         
-        context_str = " and ".join(context_info)
-        log(f"Context used: {context_str}")
-        console.print(f"\n[dim]Context used: {context_str}[/dim]")
+        # Add the user message to the conversation
+        messages.append({"role": "user", "content": user_prompt})
     
+        # Show a loading message
+        with console.status("[bold cyan]Thinking...[/bold cyan]", spinner="dots"):
+            log("Displaying 'Thinking...' status and querying OpenRouter")
+            # Query OpenRouter with full conversation history
+            response = query_openrouter(messages)
+            answer = extract_model_response(response)
+
+        # Add the assistant's response to the conversation
+        messages.append({"role": "assistant", "content": answer})
+        
+        # Keep only the last MAX_CONVERSATION_TURNS turns
+        if len(messages) > 2 * MAX_CONVERSATION_TURNS + 1:  # +1 for the system message
+            # Keep system message and last MAX_CONVERSATION_TURNS exchanges
+            messages = [messages[0]] + messages[-(2 * MAX_CONVERSATION_TURNS):]
+            log(f"Trimmed conversation history to {len(messages)} messages")
+        
+        # Save updated conversation
+        save_conversation_history(messages)
+
+        # Display response with rich
+        log("Displaying answer to user")
+        console.print("\n[bold cyan]Answer:[/bold cyan]\n")
+        console.print(Markdown(answer))  # Use Markdown for formatted output
+        
+        # Show context information that was used
+        if context_added:
+            context_info = []
+            if args.lines is not None:
+                context_info.append(f"{args.lines} lines of terminal output")
+            if args.file:
+                context_info.append(f"content from {args.file}")
+            
+            context_str = " and ".join(context_info)
+            log(f"Context used: {context_str}")
+            console.print(f"\n[dim]Context used: {context_str}[/dim]")
+        
+        # Ask if user wants to continue the conversation
+        conversation_turns = (len(messages) - 1) // 2  # Subtract system message, divide by 2 (user+assistant)
+        console.print(f"\n[dim]Conversation active: {conversation_turns} turns so far[/dim]")
+        console.print(f"[dim]Type `{COMMAND_NAME} \"your follow-up question\"` to continue this conversation (default behavior)[/dim]")
+        console.print(f"[dim]Type `{COMMAND_NAME} -n \"new question\"` to start a new conversation[/dim]")
+        
     log("AiTermy execution completed successfully")
 
 if __name__ == "__main__":

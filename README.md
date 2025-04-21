@@ -6,6 +6,7 @@ A powerful terminal AI assistant powered by OpenRouter, providing contextual ass
 
 *   **Multiple AI Models**: Choose from various models available through OpenRouter.
 *   **Contextual Awareness**: Includes recent terminal history (filtering out the command itself) and/or file contents.
+*   **Persistent Conversations**: Maintains conversation history between commands for natural follow-up questions.
 *   **Cross-Platform**: Works on both macOS and Linux.
 *   **Rich Formatting**: Provides formatted output using Markdown.
 *   **Easy Setup & Updates**: Simple installation script with guided configuration that handles updates gracefully.
@@ -83,12 +84,34 @@ ai "Explain the main function in this script" -f my_script.py
 # Combine history and file context
 ai "Why is this test failing?" -l 15 -f test_output.log
 
+# Ask a follow-up question (continues previous conversation by default)
+ai "Can you explain that in more detail?"
+
+# Start a new conversation explicitly
+ai -n "Let's talk about something else" 
+
 # Get help (shows options and current model)
 ai -h
 
 # Check version
 ai -v
 ```
+
+## Conversation Functionality
+
+AiTermy maintains conversation history between commands, making it easy to have natural back-and-forth interactions:
+
+* **Default behavior**: `ai "question"` automatically continues the previous conversation
+* **New conversation**: `ai -n "question"` explicitly starts a fresh conversation 
+* **Explicit continuation**: `ai -c "question"` explicitly continues a conversation (same as default)
+
+The conversation state is stored in `~/.aitermy/conversations/` and persists between terminal sessions.
+By default, up to 10 conversation turns are maintained for context.
+
+After each response, AiTermy shows:
+1. The current number of conversation turns
+2. How to continue the conversation
+3. How to start a new conversation
 
 ## Configuration (`.env` file)
 
