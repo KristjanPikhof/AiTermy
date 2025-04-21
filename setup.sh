@@ -152,34 +152,157 @@ while [ -z "$PREFERRED_MODEL" ]; do
   fi
 done
 
-# --- 3. Create .env file from template ---
+# --- 3. Create or Update .env file ---
 
-# Handle .env configuration
-if [ -f "$INSTALL_DIR/.example.env" ]; then
-  cp "$INSTALL_DIR/.example.env" "$INSTALL_DIR/.env"
-  echo -e "${GREEN}Created .env file from example${NC}"
-  
-  # Detect OS for sed command compatibility
-  if [[ "$OSTYPE" == "darwin"* ]]; then
-    # macOS
-    sed -i '' "s|OPENROUTER_API_KEY=.*|OPENROUTER_API_KEY=\"$API_KEY\"|g" "$INSTALL_DIR/.env"
-    sed -i '' "s|OPENROUTER_MODEL=.*|OPENROUTER_MODEL=\"$PREFERRED_MODEL\"|g" "$INSTALL_DIR/.env"
-    # Add command name to .env
-    echo "COMMAND_NAME=\"$COMMAND_NAME\"" >> "$INSTALL_DIR/.env"
-  else
-    # Linux
-    sed -i "s|OPENROUTER_API_KEY=.*|OPENROUTER_API_KEY=\"$API_KEY\"|g" "$INSTALL_DIR/.env"
-    sed -i "s|OPENROUTER_MODEL=.*|OPENROUTER_MODEL=\"$PREFERRED_MODEL\"|g" "$INSTALL_DIR/.env"
-    # Add command name to .env
-    echo "COMMAND_NAME=\"$COMMAND_NAME\"" >> "$INSTALL_DIR/.env"
-  fi
-  
-  # Set secure permissions
-  chmod 600 "$INSTALL_DIR/.env"
-  echo -e "${GREEN}Secured .env file permissions${NC}"
+if [ -f "$INSTALL_DIR/.env" ]; then
+    # --- Update Existing .env File ---
+    echo -e "${YELLOW}Existing .env file found.${NC}"
+    
+    # Read existing values (handle potential surrounding quotes)
+    EXISTING_API_KEY=$(grep '^OPENROUTER_API_KEY=' "$INSTALL_DIR/.env" | head -n 1 | cut -d '=' -f2- | sed 's/^[\"\' ]*//;s/[\"\' ]*$//')
+    EXISTING_MODEL=$(grep '^OPENROUTER_MODEL=' "$INSTALL_DIR/.env" | head -n 1 | cut -d '=' -f2- | sed 's/^[\"\' ]*//;s/[\"\' ]*$//')
+
+    # --- Handle API Key ---
+    if [ -n "$EXISTING_API_KEY" ] && [[ "$EXISTING_API_KEY" == sk-or-* ]]; then
+        MASKED_KEY="${EXISTING_API_KEY:0:6}...${EXISTING_API_KEY: -4}"
+        if confirm "Keep existing API key ($MASKED_KEY)?"; then
+            API_KEY="$EXISTING_API_KEY" # Keep existing key
+            echo -e "${GREEN}Using existing API key.${NC}"
+        else
+            # Prompt for new key (same loop as before)
+            while :; do
+              read -r -s -p "Enter your new OpenRouter API key (hidden input): " API_KEY_NEW
+              echo # Newline after hidden input
+              if [[ "$API_KEY_NEW" != sk-or-* ]]; then
+                echo -e "${RED}Invalid API key format - must start with 'sk-or-'.${NC}"
+              else
+                API_KEY="$API_KEY_NEW" # Use new key
+                break
+              fi
+            done
+        fi
+    else
+        echo -e "${YELLOW}No valid API key found in existing .env or format is incorrect. Please enter one.${NC}"
+        # Prompt for new key (same loop as before)
+        while :; do
+          read -r -s -p "Enter your OpenRouter API key (hidden input): " API_KEY_NEW
+          echo # Newline after hidden input
+          if [[ "$API_KEY_NEW" != sk-or-* ]]; then
+            echo -e "${RED}Invalid API key format - must start with 'sk-or-'.${NC}"
+          else
+            API_KEY="$API_KEY_NEW" # Use new key
+            break
+          fi
+        done
+    fi
+
+    # --- Handle Model ---
+    if [ -n "$EXISTING_MODEL" ]; then
+        if confirm "Keep existing model ($EXISTING_MODEL)?"; then
+            PREFERRED_MODEL="$EXISTING_MODEL" # Keep existing model
+            echo -e "${GREEN}Using existing model.${NC}"
+        else
+            # Prompt for new model (same loop as before)
+            echo -e "${CYAN}Available models include:${NC}" # Show list again
+            echo -e "  ${WHITE}meta-llama/llama-4-scout${NC} (fast responses & cost-effective)"
+            echo -e "  ${WHITE}google/gemini-2.0-flash-001${NC} (more capable & cost-effective)"
+            echo -e "  ${WHITE}anthropic/claude-3.7-sonnet${NC} (most capable but expensive)"
+            echo -e "  ${WHITE}google/gemini-2.5-pro-preview-03-25${NC} (balanced)"
+            PREFERRED_MODEL_NEW=""
+            while [ -z "$PREFERRED_MODEL_NEW" ]; do
+              read -r -p "Enter your preferred model (default: google/gemini-2.5-pro-preview-03-25): " PREFERRED_MODEL_NEW
+              if [ -z "$PREFERRED_MODEL_NEW" ]; then
+                PREFERRED_MODEL_NEW="google/gemini-2.5-pro-preview-03-25"
+                echo -e "${YELLOW}Using default model: ${PREFERRED_MODEL_NEW}${NC}"
+              fi
+            done
+            PREFERRED_MODEL="$PREFERRED_MODEL_NEW" # Use new model
+        fi
+    else
+        echo -e "${YELLOW}No model found in existing .env. Please select one.${NC}"
+        # Prompt for new model (same loop as before)
+        echo -e "${CYAN}Available models include:${NC}"
+        echo -e "  ${WHITE}meta-llama/llama-4-scout${NC} (fast responses & cost-effective)"
+        echo -e "  ${WHITE}google/gemini-2.0-flash-001${NC} (more capable & cost-effective)"
+        echo -e "  ${WHITE}anthropic/claude-3.7-sonnet${NC} (most capable but expensive)"
+        echo -e "  ${WHITE}google/gemini-2.5-pro-preview-03-25${NC} (balanced)"
+        PREFERRED_MODEL_NEW=""
+        while [ -z "$PREFERRED_MODEL_NEW" ]; do
+          read -r -p "Enter your preferred model (default: google/gemini-2.5-pro-preview-03-25): " PREFERRED_MODEL_NEW
+          if [ -z "$PREFERRED_MODEL_NEW" ]; then
+            PREFERRED_MODEL_NEW="google/gemini-2.5-pro-preview-03-25"
+            echo -e "${YELLOW}Using default model: ${PREFERRED_MODEL_NEW}${NC}"
+          fi
+        done
+        PREFERRED_MODEL="$PREFERRED_MODEL_NEW" # Use new model
+    fi
+
+    # --- Update .env file --- (API_KEY and PREFERRED_MODEL are now set)
+    echo -e "${CYAN}Updating .env file...${NC}"
+    # Use sed to update existing values (handle macOS/Linux)
+    # Anchored sed ensures we only replace the correct lines
+    if [[ "$OSTYPE" == "darwin"* ]]; then
+        sed -i '' "s|^OPENROUTER_API_KEY=.*|OPENROUTER_API_KEY=\"$API_KEY\"|" "$INSTALL_DIR/.env"
+        sed -i '' "s|^OPENROUTER_MODEL=.*|OPENROUTER_MODEL=\"$PREFERRED_MODEL\"|" "$INSTALL_DIR/.env"
+        # Ensure COMMAND_NAME exists/is updated
+        if grep -q '^COMMAND_NAME=' "$INSTALL_DIR/.env"; then
+             sed -i '' "s|^COMMAND_NAME=.*|COMMAND_NAME=\"$COMMAND_NAME\"|" "$INSTALL_DIR/.env"
+        else
+             echo "COMMAND_NAME=\"$COMMAND_NAME\"" >> "$INSTALL_DIR/.env"
+        fi
+    else
+        # Linux sed commands
+        sed -i "s|^OPENROUTER_API_KEY=.*|OPENROUTER_API_KEY=\"$API_KEY\"|" "$INSTALL_DIR/.env"
+        sed -i "s|^OPENROUTER_MODEL=.*|OPENROUTER_MODEL=\"$PREFERRED_MODEL\"|" "$INSTALL_DIR/.env"
+         # Ensure COMMAND_NAME exists/is updated
+        if grep -q '^COMMAND_NAME=' "$INSTALL_DIR/.env"; then
+             sed -i "s|^COMMAND_NAME=.*|COMMAND_NAME=\"$COMMAND_NAME\"|" "$INSTALL_DIR/.env"
+        else
+             echo "COMMAND_NAME=\"$COMMAND_NAME\"" >> "$INSTALL_DIR/.env"
+        fi
+    fi
+    # Simple error check based on last command exit status
+    if [ $? -ne 0 ]; then
+        echo -e "${RED}Error updating .env file. Please check permissions and file content.${NC}"
+        # Consider exiting or providing more specific error handling
+    fi
+
 else
-  echo -e "${RED}Error: .example.env file missing - installation cannot continue${NC}"
-  exit 1
+    # --- Create New .env File (Initial Setup Path) ---
+    echo -e "${CYAN}No .env file found. Creating new one...${NC}"
+    if [ -f "$INSTALL_DIR/.example.env" ]; then
+        cp "$INSTALL_DIR/.example.env" "$INSTALL_DIR/.env"
+        echo -e "${GREEN}Created .env file from example${NC}"
+
+        # Use sed to insert values (handle macOS/Linux) - uses API_KEY and PREFERRED_MODEL from Section 2 prompts
+        if [[ "$OSTYPE" == "darwin"* ]]; then
+            sed -i '' "s|OPENROUTER_API_KEY=.*|OPENROUTER_API_KEY=\"$API_KEY\"|g" "$INSTALL_DIR/.env"
+            sed -i '' "s|OPENROUTER_MODEL=.*|OPENROUTER_MODEL=\"$PREFERRED_MODEL\"|g" "$INSTALL_DIR/.env"
+            # Add command name (using echo is fine here as file is new)
+            echo "COMMAND_NAME=\"$COMMAND_NAME\"" >> "$INSTALL_DIR/.env"
+        else
+            # Linux sed commands
+            sed -i "s|OPENROUTER_API_KEY=.*|OPENROUTER_API_KEY=\"$API_KEY\"|g" "$INSTALL_DIR/.env"
+            sed -i "s|OPENROUTER_MODEL=.*|OPENROUTER_MODEL=\"$PREFERRED_MODEL\"|g" "$INSTALL_DIR/.env"
+            # Add command name
+            echo "COMMAND_NAME=\"$COMMAND_NAME\"" >> "$INSTALL_DIR/.env"
+        fi
+        # Simple error check
+        if [ $? -ne 0 ]; then
+             echo -e "${RED}Error writing initial values to .env file.${NC}"
+        fi
+    else
+         echo -e "${RED}Error: .example.env file missing - installation cannot continue${NC}"
+         exit 1
+    fi
+fi
+
+# --- Set Permissions (applies to both new and updated .env) ---
+chmod 600 "$INSTALL_DIR/.env"
+if [ $? -eq 0 ]; then
+    echo -e "${GREEN}Secured .env file permissions (600)${NC}"
+else
+    echo -e "${RED}Warning: Failed to set permissions on .env file.${NC}"
 fi
 
 # Create .aitermy_config.zsh
