@@ -26,6 +26,9 @@ OPENROUTER_MODEL = os.environ.get("OPENROUTER_MODEL", "google/gemini-2.0-flash-0
 OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
 DEFAULT_LINES = 10
 
+# Command Name (set during setup)
+COMMAND_NAME = os.environ.get("COMMAND_NAME", "aitermy") # Default if not set
+
 # Logging configuration
 LOGGING_ENABLED = os.environ.get("LOGGING_ENABLED", "false").lower() == "true"
 LOG_FILE = os.environ.get("LOG_FILE", "~/.aitermy/logs/aitermy.log")
@@ -62,8 +65,8 @@ def log(message, level="INFO"):
 # Rich configurations
 console = Console()
 
-def get_terminal_context(lines):
-    log(f"Getting terminal context with {lines} lines")
+def get_terminal_context(lines, command_name):
+    log(f"Getting terminal context with {lines} lines, filtering for command '{command_name}'")
     try:
         # Read directly from zsh history file
         history_file = os.path.expanduser("~/.zsh_history")
@@ -92,14 +95,17 @@ def get_terminal_context(lines):
                     # If the format is different, just use the raw entry
                     processed_entries.append(entry.strip())
             
-            log(f"Retrieved {len(processed_entries)} lines of terminal history")
+            # Filter out the command invocation itself
+            filtered_entries = [entry for entry in processed_entries if not entry.startswith(command_name + " ")]
+
+            log(f"Retrieved {len(processed_entries)} lines, filtered down to {len(filtered_entries)} lines")
             
-            if not processed_entries:
+            if not filtered_entries:
                 log("No terminal history entries found", "WARNING")
                 return "No recent terminal history found."
             
-            # Join the processed entries with newlines
-            terminal_output = '\n'.join(processed_entries)
+            # Join the *filtered* entries with newlines
+            terminal_output = '\n'.join(filtered_entries)
             return f"Recent Terminal History:\n{terminal_output}"
     except PermissionError:
         log(f"Permission denied when accessing history file: {history_file}", "ERROR")
@@ -263,7 +269,8 @@ Please check your .env file at:
     context_added = False
     
     if args.lines is not None:
-        terminal_context = get_terminal_context(args.lines)
+        # Pass the loaded COMMAND_NAME here
+        terminal_context = get_terminal_context(args.lines, COMMAND_NAME)
         if "Recent Terminal History" in terminal_context:
             prompt += f"\n\n{terminal_context}"
             context_added = True
