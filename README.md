@@ -4,79 +4,108 @@ A powerful terminal AI assistant powered by OpenRouter, providing contextual ass
 
 ## Features
 
-* **Multiple AI Models**: Choose from various models like Google Gemini, Claude, Mistral, and more
-* **Contextual Awareness**: Includes terminal context (recent lines) and/or file contents
-* **Cross-Platform**: Works on both macOS and Linux
-* **Rich Formatting**: Provides beautifully formatted output with syntax highlighting
-* **Easy Setup**: Simple installation process with guided configuration
+*   **Multiple AI Models**: Choose from various models available through OpenRouter.
+*   **Contextual Awareness**: Includes recent terminal history (filtering out the command itself) and/or file contents.
+*   **Cross-Platform**: Works on both macOS and Linux.
+*   **Rich Formatting**: Provides formatted output using Markdown.
+*   **Easy Setup & Updates**: Simple installation script with guided configuration that handles updates gracefully.
+*   **Custom Command Name**: Choose your own command to invoke the assistant.
+*   **Optional Logging**: Log interactions for debugging.
 
 ## Requirements
 
-* Python 3.7+
-* Zsh shell
-* An OpenRouter API key (get one at [openrouter.ai](https://openrouter.ai/settings/keys))
+*   **Python 3**: The script automatically detects `python3` or `python` and its associated `pip`.
+*   **Zsh shell**: Configuration is added to `~/.zshrc`.
+*   **Git**: For cloning the repository.
+*   An **OpenRouter API key**: Get one free at [openrouter.ai/keys](https://openrouter.ai/settings/keys).
 
-## Setup
+## Installation & Setup
 
-1. **Clone the repository:**
-   ```bash
-   git clone git@github.com:KristjanPikhof/AiTermy.git
-   cd AiTermy
-   ```
+1.  **Clone the repository:**
+    ```bash
+    # Make sure you have git installed!
+    git clone git@github.com:KristjanPikhof/AiTermy.git
+    cd AiTermy
+    ```
 
-2. **Make the setup script executable:**
-   ```bash
-   chmod +x setup.sh
-   ```
+2.  **Make the setup script executable:**
+    ```bash
+    chmod +x setup.sh
+    ```
 
-3. **Run the setup script:**
-   ```bash
-   ./setup.sh
-   ```
-   
-   The setup script will:
-   * Ask for your preferred installation directory
-   * Prompt for your OpenRouter API key
-   * Let you choose your preferred AI model
-   * Create a custom command name of your choice
-   * Configure your `~/.zshrc` file (with your permission)
-   * Set up a virtual environment and install dependencies
-   * Make the command immediately available in your terminal
+3.  **Run the setup script (DO NOT use sudo):**
+    ```bash
+    ./setup.sh
+    ```
+    **Important:** Run the script as your regular user, not with `sudo`, as it needs to modify your user-specific files (`~/.zshrc`, `~/.env`) and create files in the chosen directory.
+
+    The setup script will:
+    *   Check for Python 3 and pip.
+    *   Ask for your preferred installation directory (defaults to the current directory).
+    *   Prompt for your OpenRouter API key.
+    *   Let you choose your preferred AI model from a list (or enter any valid OpenRouter model).
+    *   Ask for a custom command name (e.g., `ai`, `ask`, `termy`).
+    *   Create/update a `.env` file in the installation directory with your configuration.
+    *   Ask for permission to add its configuration source line to your `~/.zshrc`.
+    *   Ask to set up a Python virtual environment (`venv`) and install dependencies.
+    *   Attempt to source `~/.zshrc` to make the command immediately available.
+
+## Updating
+
+1.  Navigate to the installation directory:
+    ```bash
+    cd /path/to/your/AiTermy
+    ```
+2.  Pull the latest changes:
+    ```bash
+    git pull origin main # Or the appropriate branch
+    ```
+3.  Re-run the setup script:
+    ```bash
+    ./setup.sh
+    ```
+    The script will detect your existing `.env` file and ask if you want to keep your current API key and model, preventing accidental configuration loss. It will also update dependencies if you choose to set up the virtual environment again.
 
 ## Usage
 
+Replace `ai` in the examples below with the command name you chose during setup.
+
 ```bash
-# Basic usage (replace 'termy' with your chosen command name)
-termy "Your question here"
+# Basic question
+ai "How do I list files sorted by size?"
 
-# Include recent terminal output as context
-termy "What does this error mean?" -l 20
+# Include the last 20 lines of terminal history as context
+ai "What does the previous error message mean?" -l 20
 
-# Include file content as context
-termy "Explain this code" -f app.js
+# Include the content of a file as context
+ai "Explain the main function in this script" -f my_script.py
 
-# Combine both contexts
-termy "How to fix this bug?" -l 10 -f error.log
+# Combine history and file context
+ai "Why is this test failing?" -l 15 -f test_output.log
 
-# Get help
-termy -h
+# Get help (shows options and current model)
+ai -h
+
+# Check version
+ai -v
 ```
 
-## Advanced Usage
+## Configuration (`.env` file)
 
-* **Customize the number of context lines**: Use `-l` or `--lines` followed by a number
-* **Include file content**: Use `-f` or `--file` followed by a filename
-* **Check version**: Use `-v` or `--version` to see the current version and model
+The setup script creates a `.env` file in the installation directory. You can manually edit this file:
+
+*   `OPENROUTER_API_KEY`: Your key (starts with `sk-or-`). **Required**.
+*   `OPENROUTER_MODEL`: The model ID to use (e.g., `google/gemini-2.5-pro-preview-03-25`). **Required**.
+*   `COMMAND_NAME`: The command used to run the tool (set during setup).
+*   `LOGGING_ENABLED`: Set to `true` to enable logging. Defaults to `false`. **Optional**.
+*   `LOG_FILE`: Path for the log file if enabled (e.g., `~/.aitermy/logs/aitermy.log`). Defaults to `~/.aitermy/logs/aitermy.log`. **Optional**.
+
+Remember to restart your terminal or run `source ~/.zshrc` after manually editing `.env` or `.aitermy_config.zsh` if the changes aren't reflected immediately.
 
 ## Troubleshooting
 
-If you encounter any issues:
-
-1. Ensure your API key is correctly set in the `.env` file
-2. Make sure you've sourced your `.zshrc` file after installation
-3. Check that the virtual environment is properly set up
-4. Verify your internet connection for API access
-
-## Customization
-
-You can edit the `.env` file to change your API key or preferred model at any time.
+*   **Command not found:** Ensure the `source "/path/to/your/AiTermy/.aitermy_config.zsh"` line is in your `~/.zshrc` and run `source ~/.zshrc` or restart your terminal.
+*   **API Errors:** Double-check your `OPENROUTER_API_KEY` in the `.env` file and ensure it's valid and has credits/access at OpenRouter.
+*   **Permission Errors during setup:** Ensure you are *not* running `./setup.sh` with `sudo`.
+*   **File Not Found (during use):** Make sure the path provided with `-f` is correct relative to your current working directory.
+*   **Check Logs:** If logging is enabled (`LOGGING_ENABLED=true` in `.env`), check the file specified by `LOG_FILE` for detailed error messages.
