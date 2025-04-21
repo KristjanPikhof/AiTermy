@@ -9,6 +9,26 @@ if [ "$1" = "--continue" ]; then
   fi
 fi
 
+# Check if running as root
+if [ "$(id -u)" -eq 0 ]; then
+   echo -e "${RED}Error: This script should not be run as root or with sudo.${NC}"
+   echo "Please run it as your regular user."
+   exit 1
+fi
+
+# Check for Python 3
+if ! command -v python3 &> /dev/null; then
+    echo -e "${RED}Error: python3 command not found. Please install Python 3.${NC}"
+    exit 1
+fi
+
+# Check for pip (usually comes with Python 3, but good to check)
+if ! python3 -m pip --version &> /dev/null; then
+    echo -e "${RED}Error: pip not found for python3. Ensure pip is installed.${NC}"
+    # Optionally, you could offer to install pip here using get-pip.py if it exists
+    exit 1
+fi
+
 # --- Helper Functions ---
 
 # Function to ask for confirmation
@@ -93,16 +113,16 @@ done
 
 # --- 2.3 Get Preferred Model ---
 echo -e "${CYAN}Available models include:${NC}"
-echo -e "  ${WHITE}google/gemini-2.0-flash-001${NC} (fast responses)"
-echo -e "  ${WHITE}google/gemini-2.0-pro-exp-02-05:free${NC} (more capable)"
-echo -e "  ${WHITE}anthropic/claude-3.7-sonnet${NC} (most capable)"
-echo -e "  ${WHITE}openai/o1-mini${NC} (balanced)"
+echo -e "  ${WHITE}google/gemini-2.0-flash-001${NC} (fast responses & cost-effective)"
+echo -e "  ${WHITE}meta-llama/llama-4-scout${NC} (more capable & cost-effective)"
+echo -e "  ${WHITE}anthropic/claude-3.7-sonnet${NC} (most capable but expensive)"
+echo -e "  ${WHITE}google/gemini-2.5-pro-preview-03-25${NC} (balanced)"
 
 PREFERRED_MODEL=""
 while [ -z "$PREFERRED_MODEL" ]; do
-  read -r -p "Enter your preferred model (default: google/gemini-2.0-flash-001): " PREFERRED_MODEL
+  read -r -p "Enter your preferred model (default: google/gemini-2.5-pro-preview-03-25): " PREFERRED_MODEL
   if [ -z "$PREFERRED_MODEL" ]; then
-    PREFERRED_MODEL="google/gemini-2.0-flash-001"
+    PREFERRED_MODEL="google/gemini-2.5-pro-preview-03-25"
     echo -e "${YELLOW}Using default model: ${PREFERRED_MODEL}${NC}"
   fi
 done
