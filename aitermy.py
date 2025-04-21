@@ -9,6 +9,7 @@ import logging
 import datetime
 import pathlib
 import pickle
+import re
 from dotenv import load_dotenv
 from rich.console import Console
 from rich.markdown import Markdown
@@ -171,6 +172,17 @@ def get_file_context(filename):
         log(f"Error reading file {filename}: {e}", "ERROR")
         return f"Error reading file {filename}: {e}"
 
+def get_multiple_file_contexts(filenames):
+    """Get context from multiple files and combine them"""
+    log(f"Getting context from multiple files: {filenames}")
+    all_contexts = []
+    
+    for filename in filenames:
+        file_context = get_file_context(filename)
+        all_contexts.append(file_context)
+    
+    return "\n\n".join(all_contexts)
+
 def query_openrouter(messages):
     log("Sending request to OpenRouter API")
     headers = {
@@ -182,7 +194,7 @@ def query_openrouter(messages):
         "model": OPENROUTER_MODEL,
         "messages": messages,
         "temperature": 0.7,
-        "max_tokens": 1000 # Adjust as needed
+        "max_tokens": 10000 # Adjust as needed
     }
 
     log(f"Request data: model={OPENROUTER_MODEL}, temperature=0.7, max_tokens=1000, messages_count={len(messages)}")
@@ -220,10 +232,22 @@ termy "Your question here"
 ## Options
 * `-l, --lines <number>` - Include recent terminal output as context (default: {DEFAULT_LINES} lines)
 * `-f, --file <filename>` - Include file content as context
-* `-h, --help` - Show this help message
-* `-v, --version` - Show version information
-* `-n, --new` - Start a new conversation (clear history)
-* `-c, --continue` - Explicitly continue previous conversation (same as default behavior)
+  * For a single file: `-f filename.py`
+  * For multiple files: `-f file1.py -f file2.py -f file3.py`
+* `-F, --files <list>` - Alternative way to include multiple files using a comma-separated list
+  * Example: `-F "main.js,utils.js,config.js"`
+
+## File Usage Examples
+```
+# Single file
+termy "Explain this code" -f app.js
+
+# Multiple files using repeated -f
+termy "Compare these implementations" -f file1.py -f file2.py
+
+# Multiple files using comma-separated list
+termy "Find bugs in these components" -F "header.jsx,sidebar.jsx,footer.jsx"
+```
 
 ## Conversation Behavior
 * By default, `termy "question"` continues your previous conversation
@@ -231,10 +255,9 @@ termy "Your question here"
 * Use `-c` when you want to explicitly mark a question as continuing the conversation
 * Conversation history is stored in `~/.aitermy/conversations/`
 
-## Examples
+## More Examples
 ```
 termy "What does this error mean?" -l 20
-termy "Explain this code" -f app.js
 termy "How to fix this bug?" -l 10 -f error.log
 termy -n "Let's discuss a new topic"
 termy "Can you tell me more about that?" # Continues conversation by default
@@ -247,7 +270,7 @@ termy "Can you tell me more about that?" # Continues conversation by default
 ## Tips
 * For code-related questions, include the relevant file with -f
 * For error analysis, include terminal output with -l
-* You can combine both -l and -f for more context
+* For code comparison or complex projects, use multiple files
 * Conversations are maintained automatically between commands
 """
     console.print(Panel(Markdown(help_text), title="AiTermy Help", border_style="cyan"))
@@ -260,7 +283,10 @@ def main():
     parser.add_argument("question", nargs='?', help="The question to ask the assistant")
     parser.add_argument("-l", "--lines", type=int, default=DEFAULT_LINES, 
                         help=f"Number of lines of terminal output to include as context (default: {DEFAULT_LINES})")
-    parser.add_argument("-f", "--file", type=str, help="Path to a file to include as context")
+    parser.add_argument("-f", "--file", action='append', dest='files',
+                        help="Path to a file to include as context. Use multiple times for multiple files (e.g., -f file1.py -f file2.py)")
+    parser.add_argument("-F", "--files", dest='files_list', 
+                        help="Comma-separated list of files to include as context (e.g., -F \"file1.py,file2.py,file3.py\")")
     parser.add_argument("-v", "--version", action='version', 
                         version=f'AiTermy v{VERSION} using {OPENROUTER_MODEL}')
     parser.add_argument("-n", "--new", action='store_true', help="Start a new conversation")
@@ -268,10 +294,10 @@ def main():
                         help="Continue the previous conversation")
     
     args = parser.parse_args()
-    log(f"Parsed arguments: question={args.question}, lines={args.lines}, file={args.file}, new={args.new}, continue={args.continue_convo}")
+    log(f"Parsed arguments: question={args.question}, lines={args.lines}, files={args.files}, files_list={args.files_list}, new={args.new}, continue={args.continue_convo}")
 
     # Show detailed help if no arguments or with -h
-    if args.question is None and not (args.lines or args.file or args.new or args.continue_convo):
+    if args.question is None and not (args.lines or args.files or args.files_list or args.new or args.continue_convo):
         log("No question provided, showing help")
         show_help()
         return
@@ -304,11 +330,22 @@ Please check your .env file at:
         ))
         return
     
-    # File existence check
-    if args.file and not os.path.exists(args.file):
-        log(f"File not found: {args.file}", "ERROR")
+    # Combine file sources
+    all_files = []
+    if args.files:
+        all_files.extend(args.files)
+    
+    if args.files_list:
+        # Split the comma-separated list and strip whitespace
+        files_from_list = [f.strip() for f in args.files_list.split(',')]
+        all_files.extend(files_from_list)
+    
+    # Validate all files exist before proceeding
+    missing_files = [f for f in all_files if not os.path.exists(f)]
+    if missing_files:
+        log(f"Files not found: {missing_files}", "ERROR")
         console.print(Panel(
-            Text.from_markup(f"[red]File not found:[/red] {args.file}"),
+            Text.from_markup(f"[red]Files not found:[/red] {', '.join(missing_files)}"),
             title="File Error",
             border_style="red"
         ))
@@ -345,11 +382,21 @@ Please check your .env file at:
             user_prompt += f"\n\n{terminal_context}"
             context_added = True
     
-    if args.file:
-        file_context = get_file_context(args.file)
-        if "File Content" in file_context:
-            user_prompt += f"\n\n{file_context}"
-            context_added = True
+    # Handle multiple files
+    if all_files:
+        if len(all_files) == 1:
+            # Single file case, use the existing function
+            file_context = get_file_context(all_files[0])
+            if "File Content" in file_context:
+                user_prompt += f"\n\n{file_context}"
+                context_added = True
+        else:
+            # Multiple files case, use the new function
+            file_contexts = get_multiple_file_contexts(all_files)
+            if file_contexts:
+                user_prompt += f"\n\n{file_contexts}"
+                context_added = True
+                log(f"Added context from {len(all_files)} files")
     
     # Add the user's question
     if args.question:
@@ -388,8 +435,11 @@ Please check your .env file at:
             context_info = []
             if args.lines is not None:
                 context_info.append(f"{args.lines} lines of terminal output")
-            if args.file:
-                context_info.append(f"content from {args.file}")
+            if all_files:
+                if len(all_files) == 1:
+                    context_info.append(f"content from {all_files[0]}")
+                else:
+                    context_info.append(f"content from {len(all_files)} files: {', '.join(all_files)}")
             
             context_str = " and ".join(context_info)
             log(f"Context used: {context_str}")

@@ -7,6 +7,7 @@ A powerful terminal AI assistant powered by OpenRouter, providing contextual ass
 *   **Multiple AI Models**: Choose from various models available through OpenRouter.
 *   **Contextual Awareness**: Includes recent terminal history (filtering out the command itself) and/or file contents.
 *   **Persistent Conversations**: Maintains conversation history between commands for natural follow-up questions.
+*   **Multi-File Analysis**: Process and analyze multiple files at once for code comparison, debugging, or comprehension.
 *   **Cross-Platform**: Works on both macOS and Linux.
 *   **Rich Formatting**: Provides formatted output using Markdown.
 *   **Easy Setup & Updates**: Simple installation script with guided configuration that handles updates gracefully.
@@ -81,6 +82,12 @@ ai "What does the previous error message mean?" -l 20
 # Include the content of a file as context
 ai "Explain the main function in this script" -f my_script.py
 
+# Include multiple files using repeated -f flags
+ai "Compare these two implementations" -f implementation1.js -f implementation2.js
+
+# Include multiple files using a comma-separated list
+ai "Find bugs in these files" -F "main.py,utils.py,config.py"
+
 # Combine history and file context
 ai "Why is this test failing?" -l 15 -f test_output.log
 
@@ -96,6 +103,27 @@ ai -h
 # Check version
 ai -v
 ```
+
+## Working with Multiple Files
+
+AiTermy provides two ways to include multiple files as context:
+
+1. **Using multiple `-f` flags**:
+   ```bash
+   ai "Compare these implementations" -f file1.py -f file2.py -f file3.py
+   ```
+
+2. **Using the `-F` flag with a comma-separated list**:
+   ```bash
+   ai "Analyze these files" -F "controller.js,model.js,view.js"
+   ```
+
+This is particularly useful for:
+- Comparing different implementations
+- Understanding complex projects with multiple components
+- Debugging issues across multiple files
+- Code reviews
+- Finding patterns across files
 
 ## Conversation Functionality
 
