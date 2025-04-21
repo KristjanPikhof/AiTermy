@@ -164,10 +164,14 @@ if [ -f "$INSTALL_DIR/.example.env" ]; then
     # macOS
     sed -i '' "s|OPENROUTER_API_KEY=.*|OPENROUTER_API_KEY=\"$API_KEY\"|g" "$INSTALL_DIR/.env"
     sed -i '' "s|OPENROUTER_MODEL=.*|OPENROUTER_MODEL=\"$PREFERRED_MODEL\"|g" "$INSTALL_DIR/.env"
+    # Add command name to .env
+    echo "COMMAND_NAME=\"$COMMAND_NAME\"" >> "$INSTALL_DIR/.env"
   else
     # Linux
     sed -i "s|OPENROUTER_API_KEY=.*|OPENROUTER_API_KEY=\"$API_KEY\"|g" "$INSTALL_DIR/.env"
     sed -i "s|OPENROUTER_MODEL=.*|OPENROUTER_MODEL=\"$PREFERRED_MODEL\"|g" "$INSTALL_DIR/.env"
+    # Add command name to .env
+    echo "COMMAND_NAME=\"$COMMAND_NAME\"" >> "$INSTALL_DIR/.env"
   fi
   
   # Set secure permissions
