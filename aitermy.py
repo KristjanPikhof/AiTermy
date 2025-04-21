@@ -262,8 +262,9 @@ Please check your .env file at:
 
     # Build the prompt
     os_type = "macOS" if sys.platform == "darwin" else "Linux"
-    prompt = f"You are a helpful terminal assistant. You are running on {os_type}. Current location is {os.getcwd()}. " 
-    log(f"Building prompt with OS type: {os_type}, current directory: {os.getcwd()}")
+    prompt = f"You are a helpful terminal assistant. You are running on {os_type}. Current location is {os.getcwd()}. "
+    prompt += "Provide concise, direct answers suitable for terminal output. Use Markdown formatting where appropriate (like code blocks), but avoid overly long paragraphs. Focus directly on the user's question."
+    log(f"Building prompt with OS type: {os_type}, current directory: {os.getcwd()}, and conciseness instructions")
     
     # Add context information
     context_added = False
