@@ -16,18 +16,53 @@ if [ "$(id -u)" -eq 0 ]; then
    exit 1
 fi
 
-# Check for Python 3
-if ! command -v python3 &> /dev/null; then
-    echo -e "${RED}Error: python3 command not found. Please install Python 3.${NC}"
-    exit 1
+# --- Colors ---
+GREEN='\033[0;32m'
+RED='\033[0;31m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+MAGENTA='\033[0;35m'
+CYAN='\033[0;36m'
+WHITE='\033[0;37m'
+NC='\033[0m' # No Color
+
+# --- Find Python & Pip ---
+PYTHON_CMD=""
+PIP_CMD=""
+
+# Try python3
+if command -v python3 &> /dev/null; then
+    if python3 --version 2>&1 | grep -q "Python 3\\."; then
+        PYTHON_CMD="python3"
+    fi
 fi
 
-# Check for pip (usually comes with Python 3, but good to check)
-if ! python3 -m pip --version &> /dev/null; then
-    echo -e "${RED}Error: pip not found for python3. Ensure pip is installed.${NC}"
-    # Optionally, you could offer to install pip here using get-pip.py if it exists
+# If python3 not found or not version 3, try python
+if [ -z "$PYTHON_CMD" ]; then
+    if command -v python &> /dev/null; then
+        # Suppress "Python 2.7 is deprecated" warning on stderr
+        if python --version 2>&1 | grep -q "Python 3\\."; then
+            PYTHON_CMD="python"
+        fi
+    fi
+fi
+
+# Check if Python 3 found
+if [ -z "$PYTHON_CMD" ]; then
+    echo -e "${RED}Error: Could not find a Python 3 interpreter (tried 'python3' and 'python'). Please install Python 3.${NC}"
+    exit 1
+else
+    echo -e "${GREEN}Using Python command: ${BLUE}$PYTHON_CMD${NC}"
+fi
+
+# Find Pip using the found Python command
+if $PYTHON_CMD -m pip --version &> /dev/null; then
+    PIP_CMD="$PYTHON_CMD -m pip"
+else
+    echo -e "${RED}Error: Could not find pip for $PYTHON_CMD (tried '$PYTHON_CMD -m pip'). Please ensure pip is installed for Python 3.${NC}"
     exit 1
 fi
+echo -e "${GREEN}Using Pip command: ${BLUE}$PIP_CMD${NC}"
 
 # --- Helper Functions ---
 
@@ -54,16 +89,6 @@ add_to_zshrc() {
     echo -e "${GREEN}Added line to ~/.zshrc.${NC}"
   fi
 }
-
-# --- Colors ---
-GREEN='\033[0;32m'
-RED='\033[0;31m'
-YELLOW='\033[1;33m'
-BLUE='\033[0;34m'
-MAGENTA='\033[0;35m'
-CYAN='\033[0;36m'
-WHITE='\033[0;37m'
-NC='\033[0m' # No Color
 
 # --- 1. Determine Installation Directory ---
 
@@ -163,7 +188,7 @@ function $COMMAND_NAME {
   AI_TERM_PATH='$INSTALL_DIR'
   
   # Call the main python script with proper quoting
-  command python3 "\$AI_TERM_PATH/aitermy.py" "\$@"
+  command $PYTHON_CMD "\$AI_TERM_PATH/aitermy.py" "\$@"
 }
 EOF
 echo -e "${GREEN}Created .aitermy_config.zsh with command name: ${BLUE}$COMMAND_NAME${NC}"
@@ -203,29 +228,41 @@ if confirm "Set up the virtual environment for AiTermy?"; then
   echo -e "${CYAN}Setting up virtual environment...${NC}"
   cd "$INSTALL_DIR" || exit 1
   
-  # Create virtual environment
-  python3 -m venv venv
+  # Create virtual environment using the detected Python command
+  $PYTHON_CMD -m venv venv
+  if [ $? -ne 0 ]; then
+      echo -e "${RED}Error: Failed to create virtual environment.${NC}"
+      exit 1
+  fi
   echo -e "${GREEN}Virtual environment created${NC}"
   
+  # Define python executable within venv
+  VENV_PYTHON="$INSTALL_DIR/venv/bin/python"
+
   # Install dependencies using the virtual environment's pip
   echo -e "${CYAN}Installing dependencies...${NC}"
-  "$INSTALL_DIR/venv/bin/pip" install --upgrade pip
-  "$INSTALL_DIR/venv/bin/pip" install -r "$INSTALL_DIR/requirements.txt"
+  "$VENV_PYTHON" -m pip install --upgrade pip
+  if [ $? -ne 0 ]; then echo -e "${RED}Error upgrading pip in venv.${NC}"; exit 1; fi
+
+  "$VENV_PYTHON" -m pip install -r "$INSTALL_DIR/requirements.txt"
+  if [ $? -ne 0 ]; then echo -e "${RED}Error installing requirements in venv.${NC}"; exit 1; fi
   
   echo -e "${GREEN}Dependencies installed successfully${NC}"
   
-  # Update the command function to use the virtual environment
+  # Update the command function to use the virtual environment's python
+  # Note: We target the original $PYTHON_CMD used in the 'cat' command above
   if [[ "$OSTYPE" == "darwin"* ]]; then
     # macOS
-    sed -i '' "s|command python3|\"$INSTALL_DIR/venv/bin/python3\"|g" "$INSTALL_DIR/.aitermy_config.zsh"
+    sed -i '' "s|command $PYTHON_CMD|\"$VENV_PYTHON\"|g" "$INSTALL_DIR/.aitermy_config.zsh"
   else
     # Linux
-    sed -i "s|command python3|\"$INSTALL_DIR/venv/bin/python3\"|g" "$INSTALL_DIR/.aitermy_config.zsh"
+    sed -i "s|command $PYTHON_CMD|\"$VENV_PYTHON\"|g" "$INSTALL_DIR/.aitermy_config.zsh"
   fi
+  if [ $? -ne 0 ]; then echo -e "${RED}Error updating .aitermy_config.zsh for venv.${NC}"; exit 1; fi
   
   echo -e "${GREEN}Command configured to use virtual environment${NC}"
 else
-  echo -e "${YELLOW}Skipping virtual environment setup. Ensure dependencies are installed manually.${NC}"
+  echo -e "${YELLOW}Skipping virtual environment setup. Ensure dependencies are installed manually using '$PIP_CMD install -r requirements.txt'.${NC}"
 fi
 
 # Add .zshrc calling here or user will mess up directory
@@ -243,10 +280,12 @@ echo ""
 echo -e "${MAGENTA}AiTermy setup is complete!${NC}"
 echo ""
 
-# Test API connection
+# Test API connection using the detected Python command
 echo -e "${CYAN}Testing OpenRouter API connection...${NC}"
-TEST_RESPONSE=$(python3 -c "import os,requests; print(requests.get('https://openrouter.ai/api/v1/auth/key', headers={'Authorization': 'Bearer ${API_KEY}'}).status_code)")
-if [ "$TEST_RESPONSE" -eq 200 ]; then
+TEST_RESPONSE=$($PYTHON_CMD -c "import os,requests; print(requests.get('https://openrouter.ai/api/v1/auth/key', headers={'Authorization': 'Bearer ${API_KEY}'}).status_code)")
+if [ $? -ne 0 ]; then
+    echo -e "${RED}Error executing Python command to test API key.${NC}"
+elif [ "$TEST_RESPONSE" -eq 200 ]; then
   echo -e "${GREEN}API connection successful!${NC}"
 else
   echo -e "${RED}API connection failed (HTTP $TEST_RESPONSE). Check your API key.${NC}"
