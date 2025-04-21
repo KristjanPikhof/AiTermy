@@ -1,14 +1,5 @@
 #!/bin/bash
 
-# Check if we're continuing after a shell reload
-if [ "$1" = "--continue" ]; then
-  echo -e "\033[0;32mContinuing setup after shell reload...\033[0m"
-  # Remove the temporary continuation file if it exists
-  if [ -f /tmp/aitermy_continue ]; then
-    rm /tmp/aitermy_continue
-  fi
-fi
-
 # Check if running as root
 if [ "$(id -u)" -eq 0 ]; then
    echo -e "${RED}Error: This script should not be run as root or with sudo.${NC}"
@@ -25,6 +16,16 @@ MAGENTA='\033[0;35m'
 CYAN='\033[0;36m'
 WHITE='\033[0;37m'
 NC='\033[0m' # No Color
+
+# --- Detect OS ---
+if [[ "$OSTYPE" == "darwin"* ]]; then
+    OS_TYPE="macOS"
+elif [[ "$OSTYPE" == "linux-gnu"* ]]; then
+    OS_TYPE="Linux"
+else
+    OS_TYPE="Other"
+fi
+echo -e "${CYAN}Detected OS: ${OS_TYPE}${NC}"
 
 # --- Find Python & Pip ---
 PYTHON_CMD=""
@@ -59,12 +60,24 @@ fi
 if $PYTHON_CMD -m pip --version &> /dev/null; then
     PIP_CMD="$PYTHON_CMD -m pip"
 else
-    echo -e "${RED}Error: Could not find pip for $PYTHON_CMD (tried '$PYTHON_CMD -m pip'). Please ensure pip is installed for Python 3.${NC}"
-    exit 1
+    # Try pip3
+    if command -v pip3 &> /dev/null; then
+        PIP_CMD="pip3"
+    # Try pip
+    elif command -v pip &> /dev/null; then
+        if pip --version 2>&1 | grep -q "$PYTHON_CMD"; then
+            PIP_CMD="pip"
+        fi
+    fi
 fi
-echo -e "${GREEN}Using Pip command: ${BLUE}$PIP_CMD${NC}"
 
-# --- Helper Functions ---
+# Verify pip was found
+if [ -z "$PIP_CMD" ]; then
+    echo -e "${RED}Error: Could not find pip for $PYTHON_CMD. Please ensure pip is installed.${NC}"
+    exit 1
+else
+    echo -e "${GREEN}Using Pip command: ${BLUE}$PIP_CMD${NC}"
+fi
 
 # Function to ask for confirmation
 confirm() {
@@ -79,388 +92,205 @@ confirm() {
   esac
 }
 
-# Function to add a line to .zshrc (idempotent)
-add_to_zshrc() {
-  LINE="$1"
-  if grep -q "$LINE" ~/.zshrc; then
-    echo -e "${YELLOW}Line already exists in ~/.zshrc.${NC}"
-  else
-    echo "$LINE" >> ~/.zshrc
-    echo -e "${GREEN}Added line to ~/.zshrc.${NC}"
-  fi
-}
+# --- Basic Setup ---
+INSTALL_DIR=$(pwd)
+echo -e "${CYAN}Using installation directory: ${INSTALL_DIR}${NC}"
 
-# --- 1. Determine Installation Directory ---
-
-# Display current working directory
-CURRENT_DIR=$(pwd)
-echo -e "${YELLOW}Current working directory: ${BLUE}$CURRENT_DIR${NC}"
-
-# Ask if the user wants to use the current directory
-if confirm "Do you want to use the current directory as the installation directory? "; then
-  INSTALL_DIR="$CURRENT_DIR"
-else
-  # If not, prompt for a custom directory
-  INSTALL_DIR=""
-  while [ -z "$INSTALL_DIR" ]; do
-    read -r -p "Enter the desired installation directory (e.g., ~/Desktop/AiTermy): " INSTALL_DIR
-    if [ -z "$INSTALL_DIR" ]; then
-      echo -e "${RED}Installation directory cannot be empty.${NC}"
-    elif [ ! -d "$(dirname "$INSTALL_DIR")" ]; then
-      echo -e "${RED}Invalid directory, it must exist.${NC}"
-      INSTALL_DIR=""
+# Check for existing .env file
+if [ -f ".env" ]; then
+  echo -e "${YELLOW}Found existing .env file. Reading configuration...${NC}"
+  
+  # Read existing values
+  EXISTING_API_KEY=$(grep -i '^[[:space:]]*OPENROUTER_API_KEY' .env | sed -n 's/^[[:space:]]*OPENROUTER_API_KEY[[:space:]]*=[[:space:]]*"\([^"]*\)".*/\1/p')
+  EXISTING_MODEL=$(grep -i '^[[:space:]]*OPENROUTER_MODEL' .env | sed -n 's/^[[:space:]]*OPENROUTER_MODEL[[:space:]]*=[[:space:]]*"\([^"]*\)".*/\1/p')
+  EXISTING_COMMAND=$(grep -i '^[[:space:]]*COMMAND_NAME' .env | sed -n 's/^[[:space:]]*COMMAND_NAME[[:space:]]*=[[:space:]]*"\([^"]*\)".*/\1/p')
+  EXISTING_LOGGING=$(grep -i '^[[:space:]]*LOGGING_ENABLED' .env | sed -n 's/^[[:space:]]*LOGGING_ENABLED[[:space:]]*=[[:space:]]*"\([^"]*\)".*/\1/p')
+  EXISTING_LOG_FILE=$(grep -i '^[[:space:]]*LOG_FILE' .env | sed -n 's/^[[:space:]]*LOG_FILE[[:space:]]*=[[:space:]]*"\([^"]*\)".*/\1/p')
+  
+  # Handle command name
+  if [ -n "$EXISTING_COMMAND" ]; then
+    if confirm "Keep existing command name '$EXISTING_COMMAND'?"; then
+      COMMAND_NAME="$EXISTING_COMMAND"
+      echo -e "${GREEN}Using existing command name: ${COMMAND_NAME}${NC}"
+    else
+      read -r -p "Enter the desired command name (e.g., ai, termy, ask): " COMMAND_NAME
+      echo -e "${GREEN}Using new command name: ${COMMAND_NAME}${NC}"
     fi
-  done
-fi
-
-echo -e "The AiTermy will be installed to: ${GREEN}$INSTALL_DIR${NC}"
-
-# --- 2. Collect User Configuration ---
-
-# --- 2.1 Get Command Name ---
-while [ -z "$COMMAND_NAME" ]; do
-  read -r -p "Enter the desired command name (e.g., ai, termy, ask): " COMMAND_NAME
-  if [ -z "$COMMAND_NAME" ]; then
-    echo -e "${RED}Command name cannot be empty.${NC}"
-  fi
-done
-
-# --- 2.2 Get OpenRouter API Key ---
-while :; do
-  read -r -s -p "Enter your OpenRouter API key (hidden input): " API_KEY
-  echo # Newline after hidden input
-  if [[ "$API_KEY" != sk-or-* ]]; then
-    echo -e "${RED}Invalid API key format - must start with 'sk-or-'.${NC}"
   else
-    break
+    read -r -p "Enter the desired command name (e.g., ai, termy, ask): " COMMAND_NAME
+    echo -e "${GREEN}Using command name: ${COMMAND_NAME}${NC}"
   fi
-done
-
-# --- 2.3 Get Preferred Model ---
-echo -e "${CYAN}Available models include:${NC}"
-echo -e "  ${WHITE}meta-llama/llama-4-scout${NC} (fast responses & cost-effective)"
-echo -e "  ${WHITE}google/gemini-2.0-flash-001${NC} (more capable & cost-effective)"
-echo -e "  ${WHITE}anthropic/claude-3.7-sonnet${NC} (most capable but expensive)"
-echo -e "  ${WHITE}google/gemini-2.5-pro-preview-03-25${NC} (balanced)"
-
-PREFERRED_MODEL=""
-while [ -z "$PREFERRED_MODEL" ]; do
-  read -r -p "Enter your preferred model (default: google/gemini-2.5-pro-preview-03-25): " PREFERRED_MODEL
-  if [ -z "$PREFERRED_MODEL" ]; then
+  
+  # Handle API key
+  if [ -n "$EXISTING_API_KEY" ]; then
+    MASKED_KEY="${EXISTING_API_KEY:0:6}...${EXISTING_API_KEY: -4}"
+    if confirm "Keep existing API key ($MASKED_KEY)?"; then
+      API_KEY="$EXISTING_API_KEY"
+      echo -e "${GREEN}Using existing API key${NC}"
+    else
+      read -r -s -p "Enter your OpenRouter API key: " API_KEY
+      echo # Newline after hidden input
+      echo -e "${GREEN}API key updated${NC}"
+    fi
+  else
+    read -r -s -p "Enter your OpenRouter API key: " API_KEY
+    echo # Newline after hidden input
+    echo -e "${GREEN}API key received${NC}"
+  fi
+  
+  # Handle model
+  if [ -n "$EXISTING_MODEL" ]; then
+    if confirm "Keep existing model '$EXISTING_MODEL'?"; then
+      PREFERRED_MODEL="$EXISTING_MODEL"
+      echo -e "${GREEN}Using existing model: ${PREFERRED_MODEL}${NC}"
+    else
+      echo -e "${CYAN}Available models include:${NC}"
+      echo -e "  ${WHITE}meta-llama/llama-4-scout${NC} (fast responses & cost-effective)"
+      echo -e "  ${WHITE}google/gemini-2.0-flash-001${NC} (more capable & cost-effective)"
+      echo -e "  ${WHITE}anthropic/claude-3.7-sonnet${NC} (most capable but expensive)"
+      echo -e "  ${WHITE}google/gemini-2.5-pro-preview-03-25${NC} (balanced)"
+      read -r -p "Enter your preferred model (default: google/gemini-2.5-pro-preview-03-25): " MODEL_INPUT
+      if [ -z "$MODEL_INPUT" ]; then
+        PREFERRED_MODEL="google/gemini-2.5-pro-preview-03-25"
+      else
+        PREFERRED_MODEL="$MODEL_INPUT"
+      fi
+      echo -e "${GREEN}Using model: ${PREFERRED_MODEL}${NC}"
+    fi
+  else
     PREFERRED_MODEL="google/gemini-2.5-pro-preview-03-25"
-    echo -e "${YELLOW}Using default model: ${PREFERRED_MODEL}${NC}"
+    echo -e "${GREEN}Using default model: ${PREFERRED_MODEL}${NC}"
   fi
-done
-
-# --- 3. Create or Update .env file ---
-
-if [ -f "$INSTALL_DIR/.env" ]; then
-    # --- Update Existing .env File ---
-    echo -e "${YELLOW}Existing .env file found.${NC}"
-    
-    # Read existing values (handle potential surrounding quotes)
-    EXISTING_API_KEY=$(grep '^OPENROUTER_API_KEY=' "$INSTALL_DIR/.env" | head -n 1 | cut -d '=' -f2- | sed 's/^[\"\' ]*//;s/[\"\' ]*$//')
-    EXISTING_MODEL=$(grep '^OPENROUTER_MODEL=' "$INSTALL_DIR/.env" | head -n 1 | cut -d '=' -f2- | sed 's/^[\"\' ]*//;s/[\"\' ]*$//')
-
-    # --- Handle API Key ---
-    if [ -n "$EXISTING_API_KEY" ] && [[ "$EXISTING_API_KEY" == sk-or-* ]]; then
-        MASKED_KEY="${EXISTING_API_KEY:0:6}...${EXISTING_API_KEY: -4}"
-        if confirm "Keep existing API key ($MASKED_KEY)?"; then
-            API_KEY="$EXISTING_API_KEY" # Keep existing key
-            echo -e "${GREEN}Using existing API key.${NC}"
-        else
-            # Prompt for new key (same loop as before)
-            while :; do
-              read -r -s -p "Enter your new OpenRouter API key (hidden input): " API_KEY_NEW
-              echo # Newline after hidden input
-              if [[ "$API_KEY_NEW" != sk-or-* ]]; then
-                echo -e "${RED}Invalid API key format - must start with 'sk-or-'.${NC}"
-              else
-                API_KEY="$API_KEY_NEW" # Use new key
-                break
-              fi
-            done
-        fi
-    else
-        echo -e "${YELLOW}No valid API key found in existing .env or format is incorrect. Please enter one.${NC}"
-        # Prompt for new key (same loop as before)
-        while :; do
-          read -r -s -p "Enter your OpenRouter API key (hidden input): " API_KEY_NEW
-          echo # Newline after hidden input
-          if [[ "$API_KEY_NEW" != sk-or-* ]]; then
-            echo -e "${RED}Invalid API key format - must start with 'sk-or-'.${NC}"
-          else
-            API_KEY="$API_KEY_NEW" # Use new key
-            break
-          fi
-        done
-    fi
-
-    # --- Handle Model ---
-    if [ -n "$EXISTING_MODEL" ]; then
-        if confirm "Keep existing model ($EXISTING_MODEL)?"; then
-            PREFERRED_MODEL="$EXISTING_MODEL" # Keep existing model
-            echo -e "${GREEN}Using existing model.${NC}"
-        else
-            # Prompt for new model (same loop as before)
-            echo -e "${CYAN}Available models include:${NC}" # Show list again
-            echo -e "  ${WHITE}meta-llama/llama-4-scout${NC} (fast responses & cost-effective)"
-            echo -e "  ${WHITE}google/gemini-2.0-flash-001${NC} (more capable & cost-effective)"
-            echo -e "  ${WHITE}anthropic/claude-3.7-sonnet${NC} (most capable but expensive)"
-            echo -e "  ${WHITE}google/gemini-2.5-pro-preview-03-25${NC} (balanced)"
-            PREFERRED_MODEL_NEW=""
-            while [ -z "$PREFERRED_MODEL_NEW" ]; do
-              read -r -p "Enter your preferred model (default: google/gemini-2.5-pro-preview-03-25): " PREFERRED_MODEL_NEW
-              if [ -z "$PREFERRED_MODEL_NEW" ]; then
-                PREFERRED_MODEL_NEW="google/gemini-2.5-pro-preview-03-25"
-                echo -e "${YELLOW}Using default model: ${PREFERRED_MODEL_NEW}${NC}"
-              fi
-            done
-            PREFERRED_MODEL="$PREFERRED_MODEL_NEW" # Use new model
-        fi
-    else
-        echo -e "${YELLOW}No model found in existing .env. Please select one.${NC}"
-        # Prompt for new model (same loop as before)
-        echo -e "${CYAN}Available models include:${NC}"
-        echo -e "  ${WHITE}meta-llama/llama-4-scout${NC} (fast responses & cost-effective)"
-        echo -e "  ${WHITE}google/gemini-2.0-flash-001${NC} (more capable & cost-effective)"
-        echo -e "  ${WHITE}anthropic/claude-3.7-sonnet${NC} (most capable but expensive)"
-        echo -e "  ${WHITE}google/gemini-2.5-pro-preview-03-25${NC} (balanced)"
-        PREFERRED_MODEL_NEW=""
-        while [ -z "$PREFERRED_MODEL_NEW" ]; do
-          read -r -p "Enter your preferred model (default: google/gemini-2.5-pro-preview-03-25): " PREFERRED_MODEL_NEW
-          if [ -z "$PREFERRED_MODEL_NEW" ]; then
-            PREFERRED_MODEL_NEW="google/gemini-2.5-pro-preview-03-25"
-            echo -e "${YELLOW}Using default model: ${PREFERRED_MODEL_NEW}${NC}"
-          fi
-        done
-        PREFERRED_MODEL="$PREFERRED_MODEL_NEW" # Use new model
-    fi
-
-    # --- Update .env file --- (API_KEY and PREFERRED_MODEL are now set)
-    echo -e "${CYAN}Updating .env file...${NC}"
-    # Use sed to update existing values (handle macOS/Linux)
-    # Anchored sed ensures we only replace the correct lines
-    if [[ "$OSTYPE" == "darwin"* ]]; then
-        sed -i '' "s|^OPENROUTER_API_KEY=.*|OPENROUTER_API_KEY=\"$API_KEY\"|" "$INSTALL_DIR/.env"
-        sed -i '' "s|^OPENROUTER_MODEL=.*|OPENROUTER_MODEL=\"$PREFERRED_MODEL\"|" "$INSTALL_DIR/.env"
-        # Ensure COMMAND_NAME exists/is updated
-        if grep -q '^COMMAND_NAME=' "$INSTALL_DIR/.env"; then
-             sed -i '' "s|^COMMAND_NAME=.*|COMMAND_NAME=\"$COMMAND_NAME\"|" "$INSTALL_DIR/.env"
-        else
-             echo "COMMAND_NAME=\"$COMMAND_NAME\"" >> "$INSTALL_DIR/.env"
-        fi
-    else
-        # Linux sed commands
-        sed -i "s|^OPENROUTER_API_KEY=.*|OPENROUTER_API_KEY=\"$API_KEY\"|" "$INSTALL_DIR/.env"
-        sed -i "s|^OPENROUTER_MODEL=.*|OPENROUTER_MODEL=\"$PREFERRED_MODEL\"|" "$INSTALL_DIR/.env"
-         # Ensure COMMAND_NAME exists/is updated
-        if grep -q '^COMMAND_NAME=' "$INSTALL_DIR/.env"; then
-             sed -i "s|^COMMAND_NAME=.*|COMMAND_NAME=\"$COMMAND_NAME\"|" "$INSTALL_DIR/.env"
-        else
-             echo "COMMAND_NAME=\"$COMMAND_NAME\"" >> "$INSTALL_DIR/.env"
-        fi
-    fi
-    # Simple error check based on last command exit status
-    if [ $? -ne 0 ]; then
-        echo -e "${RED}Error updating .env file. Please check permissions and file content.${NC}"
-        # Consider exiting or providing more specific error handling
-    fi
-
+  
+  # Handle logging
+  if [ -n "$EXISTING_LOGGING" ]; then
+    LOGGING_ENABLED="$EXISTING_LOGGING"
+    echo -e "${GREEN}Using existing logging setting: ${LOGGING_ENABLED}${NC}"
+  else
+    LOGGING_ENABLED="false"
+    echo -e "${GREEN}Using default logging setting: ${LOGGING_ENABLED}${NC}"
+  fi
+  
+  # Handle log file
+  if [ -n "$EXISTING_LOG_FILE" ]; then
+    LOG_FILE="$EXISTING_LOG_FILE"
+    echo -e "${GREEN}Using existing log file path: ${LOG_FILE}${NC}"
+  else
+    LOG_FILE="~/.aitermy/logs/aitermy.log"
+    echo -e "${GREEN}Using default log file path: ${LOG_FILE}${NC}"
+  fi
+  
 else
-    # --- Create New .env File (Initial Setup Path) ---
-    echo -e "${CYAN}No .env file found. Creating new one...${NC}"
-    if [ -f "$INSTALL_DIR/.example.env" ]; then
-        cp "$INSTALL_DIR/.example.env" "$INSTALL_DIR/.env"
-        echo -e "${GREEN}Created .env file from example${NC}"
-
-        # Use sed to insert values (handle macOS/Linux) - uses API_KEY and PREFERRED_MODEL from Section 2 prompts
-        if [[ "$OSTYPE" == "darwin"* ]]; then
-            sed -i '' "s|OPENROUTER_API_KEY=.*|OPENROUTER_API_KEY=\"$API_KEY\"|g" "$INSTALL_DIR/.env"
-            sed -i '' "s|OPENROUTER_MODEL=.*|OPENROUTER_MODEL=\"$PREFERRED_MODEL\"|g" "$INSTALL_DIR/.env"
-            # Add command name (using echo is fine here as file is new)
-            echo "COMMAND_NAME=\"$COMMAND_NAME\"" >> "$INSTALL_DIR/.env"
-        else
-            # Linux sed commands
-            sed -i "s|OPENROUTER_API_KEY=.*|OPENROUTER_API_KEY=\"$API_KEY\"|g" "$INSTALL_DIR/.env"
-            sed -i "s|OPENROUTER_MODEL=.*|OPENROUTER_MODEL=\"$PREFERRED_MODEL\"|g" "$INSTALL_DIR/.env"
-            # Add command name
-            echo "COMMAND_NAME=\"$COMMAND_NAME\"" >> "$INSTALL_DIR/.env"
-        fi
-        # Simple error check
-        if [ $? -ne 0 ]; then
-             echo -e "${RED}Error writing initial values to .env file.${NC}"
-        fi
-    else
-         echo -e "${RED}Error: .example.env file missing - installation cannot continue${NC}"
-         exit 1
-    fi
+  # No existing .env file - proceed with normal setup
+  
+  # Get command name
+  read -r -p "Enter the desired command name (e.g., ai, termy, ask): " COMMAND_NAME
+  echo -e "${GREEN}Using command name: ${COMMAND_NAME}${NC}"
+  
+  # Get API key
+  read -r -s -p "Enter your OpenRouter API key: " API_KEY
+  echo # Newline after hidden input
+  echo -e "${GREEN}API key received${NC}"
+  
+  # Get preferred model
+  PREFERRED_MODEL="google/gemini-2.5-pro-preview-03-25"
+  echo -e "${GREEN}Using model: ${PREFERRED_MODEL}${NC}"
+  
+  # Set logging defaults
+  LOGGING_ENABLED="false"
+  echo -e "${GREEN}Using default logging setting: ${LOGGING_ENABLED}${NC}"
+  
+  LOG_FILE="~/.aitermy/logs/aitermy.log"
+  echo -e "${GREEN}Using default log file path: ${LOG_FILE}${NC}"
 fi
 
-# --- Set Permissions (applies to both new and updated .env) ---
-chmod 600 "$INSTALL_DIR/.env"
-if [ $? -eq 0 ]; then
-    echo -e "${GREEN}Secured .env file permissions (600)${NC}"
-else
-    echo -e "${RED}Warning: Failed to set permissions on .env file.${NC}"
-fi
+# Create .env file
+echo "OPENROUTER_API_KEY=\"$API_KEY\"" > .env
+echo "OPENROUTER_MODEL=\"$PREFERRED_MODEL\"" >> .env
+echo "COMMAND_NAME=\"$COMMAND_NAME\"" >> .env
+echo "LOGGING_ENABLED=\"$LOGGING_ENABLED\"" >> .env
+echo "LOG_FILE=\"$LOG_FILE\"" >> .env
+echo -e "${GREEN}Created .env file${NC}"
 
-# Create .aitermy_config.zsh
-cat > "$INSTALL_DIR/.aitermy_config.zsh" << EOF
+# Secure permissions
+chmod 600 .env
+echo -e "${GREEN}Set secure permissions on .env file${NC}"
+
+# Create the command file
+cat > .aitermy_config.zsh << 'EOF'
 # AiTermy Configuration
 
-# Define the '$COMMAND_NAME' command
-function $COMMAND_NAME {
+# Define the command
+function COMMAND_NAME {
   # Use absolute path for the script
-  AI_TERM_PATH='$INSTALL_DIR'
+  AI_TERM_PATH="INSTALL_DIR"
   
   # Call the main python script with proper quoting
-  command $PYTHON_CMD "\$AI_TERM_PATH/aitermy.py" "\$@"
+  command PYTHON_CMD_PLACEHOLDER "$AI_TERM_PATH/aitermy.py" "$@"
 }
 EOF
-echo -e "${GREEN}Created .aitermy_config.zsh with command name: ${BLUE}$COMMAND_NAME${NC}"
 
-# --- 4. Ask About Adding to ~/.zshrc ---
-
-if confirm "Do you want to automatically add the AiTermy configuration to your ~/.zshrc?"; then
-
-# Construct the line to add to .zshrc
-CONFIG_LINE="source \"$INSTALL_DIR/.aitermy_config.zsh\""
-
-# Add the line, prompting for permission
-    add_to_zshrc "$CONFIG_LINE"
-
-  
-
-if grep -q "$CONFIG_LINE" ~/.zshrc; then
-  # Verify configuration
-  if [ -f ~/.zshrc ] && grep -q "$CONFIG_LINE" ~/.zshrc; then
-    echo -e "${GREEN}Configuration successfully added to ~/.zshrc${NC}"
-    echo -e "${YELLOW}Configuration will be loaded at the end of setup.${NC}"
-  else
-    echo -e "${RED}Error: Missing .zshrc file${NC}"
-    echo -e "${YELLOW}Manual setup required:${NC}"
-    echo "  1. touch ~/.zshrc"
-    echo "  2. Add: source \"$INSTALL_DIR/.aitermy_config.zsh\""
-  fi
-fi
-
+# Replace placeholders based on OS
+if [[ "$OSTYPE" == "darwin"* ]]; then
+  # macOS sed
+  sed -i '' "s|COMMAND_NAME|$COMMAND_NAME|g" .aitermy_config.zsh
+  sed -i '' "s|INSTALL_DIR|$INSTALL_DIR|g" .aitermy_config.zsh
+  sed -i '' "s|PYTHON_CMD_PLACEHOLDER|$PYTHON_CMD|g" .aitermy_config.zsh
 else
-  echo -e "${YELLOW}You will need to manually add 'source \"$INSTALL_DIR/.aitermy_config.zsh\"' to your ~/.zshrc.${NC}"
+  # Linux/other sed
+  sed -i "s|COMMAND_NAME|$COMMAND_NAME|g" .aitermy_config.zsh
+  sed -i "s|INSTALL_DIR|$INSTALL_DIR|g" .aitermy_config.zsh
+  sed -i "s|PYTHON_CMD_PLACEHOLDER|$PYTHON_CMD|g" .aitermy_config.zsh
 fi
 
-# --- 5. Virtual Environment Setup ---
+echo -e "${GREEN}Created command configuration${NC}"
 
-if confirm "Set up the virtual environment for AiTermy?"; then
+# Set up virtual environment if needed
+if confirm "Set up virtual environment?"; then
   echo -e "${CYAN}Setting up virtual environment...${NC}"
-  cd "$INSTALL_DIR" || exit 1
-  
-  # Create virtual environment using the detected Python command
   $PYTHON_CMD -m venv venv
-  if [ $? -ne 0 ]; then
-      echo -e "${RED}Error: Failed to create virtual environment.${NC}"
-      exit 1
-  fi
-  echo -e "${GREEN}Virtual environment created${NC}"
   
-  # Define python executable within venv
-  VENV_PYTHON="$INSTALL_DIR/venv/bin/python"
-
+  # Define paths to virtual environment executables
+  if [ -f "venv/bin/python" ]; then
+    VENV_PYTHON="$INSTALL_DIR/venv/bin/python"
+    VENV_PIP="$INSTALL_DIR/venv/bin/pip"
+  elif [ -f "venv/Scripts/python.exe" ]; then
+    # Windows path
+    VENV_PYTHON="$INSTALL_DIR/venv/Scripts/python.exe"
+    VENV_PIP="$INSTALL_DIR/venv/Scripts/pip.exe"
+  else
+    echo -e "${RED}Error: Could not locate Python in the virtual environment.${NC}"
+    exit 1
+  fi
+  
   # Install dependencies using the virtual environment's pip
   echo -e "${CYAN}Installing dependencies...${NC}"
   "$VENV_PYTHON" -m pip install --upgrade pip
-  if [ $? -ne 0 ]; then echo -e "${RED}Error upgrading pip in venv.${NC}"; exit 1; fi
-
-  "$VENV_PYTHON" -m pip install -r "$INSTALL_DIR/requirements.txt"
-  if [ $? -ne 0 ]; then echo -e "${RED}Error installing requirements in venv.${NC}"; exit 1; fi
+  "$VENV_PYTHON" -m pip install -r requirements.txt
   
-  echo -e "${GREEN}Dependencies installed successfully${NC}"
-  
-  # Update the command function to use the virtual environment's python
-  # Note: We target the original $PYTHON_CMD used in the 'cat' command above
+  # Update to use venv python
   if [[ "$OSTYPE" == "darwin"* ]]; then
-    # macOS
-    sed -i '' "s|command $PYTHON_CMD|\"$VENV_PYTHON\"|g" "$INSTALL_DIR/.aitermy_config.zsh"
+    # macOS sed
+    sed -i '' "s|command $PYTHON_CMD|\"$VENV_PYTHON\"|g" .aitermy_config.zsh
   else
-    # Linux
-    sed -i "s|command $PYTHON_CMD|\"$VENV_PYTHON\"|g" "$INSTALL_DIR/.aitermy_config.zsh"
+    # Linux/other sed
+    sed -i "s|command $PYTHON_CMD|\"$VENV_PYTHON\"|g" .aitermy_config.zsh
   fi
-  if [ $? -ne 0 ]; then echo -e "${RED}Error updating .aitermy_config.zsh for venv.${NC}"; exit 1; fi
-  
-  echo -e "${GREEN}Command configured to use virtual environment${NC}"
-else
-  echo -e "${YELLOW}Skipping virtual environment setup. Ensure dependencies are installed manually using '$PIP_CMD install -r requirements.txt'.${NC}"
+  echo -e "${GREEN}Virtual environment set up${NC}"
 fi
 
-# Add .zshrc calling here or user will mess up directory
-# Detect OS for sed command compatibility
-if [[ "$OSTYPE" == "darwin"* ]]; then
-  # macOS
-  sed -i "" "s+AI_TERM_PATH=.*+AI_TERM_PATH=\"$INSTALL_DIR\"+g" "$INSTALL_DIR/.aitermy_config.zsh"
-else
-  # Linux
-  sed -i "s+AI_TERM_PATH=.*+AI_TERM_PATH=\"$INSTALL_DIR\"+g" "$INSTALL_DIR/.aitermy_config.zsh"
+# Add to .zshrc if needed
+if confirm "Add command to your .zshrc?"; then
+  CONFIG_LINE="source \"$INSTALL_DIR/.aitermy_config.zsh\""
+  if grep -q "$CONFIG_LINE" ~/.zshrc; then
+    echo -e "${YELLOW}Already in .zshrc${NC}"
+  else
+    echo "$CONFIG_LINE" >> ~/.zshrc
+    echo -e "${GREEN}Added to .zshrc${NC}"
+  fi
 fi
 
-# --- Final Instructions ---
-echo ""
-echo -e "${MAGENTA}AiTermy setup is complete!${NC}"
-echo ""
-
-# Test API connection using the detected Python command
-echo -e "${CYAN}Testing OpenRouter API connection...${NC}"
-TEST_RESPONSE=$($PYTHON_CMD -c "import os,requests; print(requests.get('https://openrouter.ai/api/v1/auth/key', headers={'Authorization': 'Bearer ${API_KEY}'}).status_code)")
-if [ $? -ne 0 ]; then
-    echo -e "${RED}Error executing Python command to test API key.${NC}"
-elif [ "$TEST_RESPONSE" -eq 200 ]; then
-  echo -e "${GREEN}API connection successful!${NC}"
-else
-  echo -e "${RED}API connection failed (HTTP $TEST_RESPONSE). Check your API key.${NC}"
-fi
-
-# Create log directory if logging is enabled
-if [[ "$OSTYPE" == "darwin"* ]]; then
-  # macOS
-  LOG_ENABLED=$(sed -n 's/LOGGING_ENABLED="\(.*\)"/\1/p' "$INSTALL_DIR/.env")
-  LOG_FILE=$(sed -n 's/LOG_FILE="\(.*\)"/\1/p' "$INSTALL_DIR/.env")
-else
-  # Linux
-  LOG_ENABLED=$(sed -n 's/LOGGING_ENABLED="\(.*\)"/\1/p' "$INSTALL_DIR/.env")
-  LOG_FILE=$(sed -n 's/LOG_FILE="\(.*\)"/\1/p' "$INSTALL_DIR/.env")
-fi
-
-if [ "$LOG_ENABLED" = "true" ]; then
-  LOG_FILE=$(echo "$LOG_FILE" | sed "s|~|$HOME|g")
-  LOG_DIR=$(dirname "$LOG_FILE")
-  mkdir -p "$LOG_DIR"
-  echo -e "${GREEN}Created log directory: ${LOG_DIR}${NC}"
-  echo -e "${CYAN}Logs will be written to: ${LOG_FILE}${NC}"
-fi
-
-# Source the changes to make the command immediately available
-echo -e "${CYAN}Sourcing changes to make the command available immediately...${NC}"
-if [ -f ~/.zshrc ] && grep -q "source \"$INSTALL_DIR/.aitermy_config.zsh\"" ~/.zshrc; then
-  # Source the zshrc file to make changes available in current shell
-  source ~/.zshrc 2>/dev/null || true
-  echo -e "${GREEN}Changes sourced successfully!${NC}"
-  echo -e "${CYAN}The ${COMMAND_NAME} command is now available in your terminal.${NC}"
-else
-  echo -e "${YELLOW}Could not automatically source changes.${NC}"
-fi
-
-# Display usage instructions with proper color escaping
-printf "\n\033[0;35mSetup Complete! Usage:\033[0m\n"
-printf "\033[0;37mRun your custom command:\033[0m\n"
-printf "  %s \"your question here\"\n" "$COMMAND_NAME"
-printf "\n\033[0;37mWith terminal context:\033[0m\n"
-printf "  %s \"your question here\" -l 10\n" "$COMMAND_NAME"
-printf "\n\033[0;37mWith file context:\033[0m\n"
-printf "  %s \"your question here\" -f filename.py\n" "$COMMAND_NAME"
-printf "\n\033[0;37mGet help:\033[0m\n"
-printf "  %s -h\n" "$COMMAND_NAME"
-printf "\n\033[1;33mIf the command is not available, restart your terminal or run:\033[0m\n"
-printf "  source ~/.zshrc\n"
-
-# Make the command available in the current shell
-export PATH="$PATH:$INSTALL_DIR"
-exit 0
+# Done!
+echo -e "${MAGENTA}Installation complete!${NC}"
+echo -e "${GREEN}You can now use the '${COMMAND_NAME}' command${NC}"
+exit 0 
