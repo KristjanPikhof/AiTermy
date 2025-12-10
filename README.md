@@ -105,9 +105,6 @@ termy -h
 
 # Check version
 termy -v
-
-# Manually capture console output for AI context
-termy-capture
 ```
 
 ## Working with Multiple Files
@@ -162,7 +159,6 @@ Console output capture is **enabled by default** and controlled by environment v
 
 **Usage:**
 - Console output is automatically included when you run `termy` commands
-- Use `termy-capture` to manually capture current context for AI reference
 - The AI will reference recent console activity in its responses
 
 ## Configuration (`.env` file)
