@@ -10,6 +10,7 @@ import re
 import subprocess
 import sys
 
+
 # Auto-detect and use virtual environment if available
 def setup_virtual_environment():
     """Automatically detect and use virtual environment if available"""
@@ -17,13 +18,15 @@ def setup_virtual_environment():
     venv_path = os.path.join(script_dir, "venv")
 
     # Check if we're already in a virtual environment
-    if hasattr(sys, 'real_prefix') or (hasattr(sys, 'base_prefix') and sys.base_prefix != sys.prefix):
+    if hasattr(sys, "real_prefix") or (
+        hasattr(sys, "base_prefix") and sys.base_prefix != sys.prefix
+    ):
         return  # Already in venv
 
     # Check if venv directory exists
     if os.path.exists(venv_path):
         # Determine the correct Python executable path
-        if os.name == 'nt':  # Windows
+        if os.name == "nt":  # Windows
             venv_python = os.path.join(venv_path, "Scripts", "python.exe")
         else:  # Unix-like systems
             venv_python = os.path.join(venv_path, "bin", "python")
@@ -31,6 +34,7 @@ def setup_virtual_environment():
         if os.path.exists(venv_python):
             # Restart the script with the virtual environment's Python
             os.execv(venv_python, [venv_python] + sys.argv)
+
 
 # Set up virtual environment before importing dependencies
 setup_virtual_environment()
@@ -48,10 +52,11 @@ from rich.spinner import Spinner
 from rich.text import Text
 
 # Version information
-VERSION = "2.0.0"
+VERSION = "2.1.0"
 
-# Load environment variables from .env file
-load_dotenv(".env")  # Use .env for production, test.env for testing
+# Load environment variables from .env file in script directory
+script_dir = os.path.dirname(os.path.abspath(__file__))
+load_dotenv(os.path.join(script_dir, ".env"))  # Use .env for production
 
 # OpenRouter info
 OPENROUTER_API_KEY = os.environ.get("OPENROUTER_API_KEY")
@@ -62,7 +67,9 @@ OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
 DEFAULT_LINES = 10
 
 # Command Name (set during setup)
-COMMAND_NAME = os.environ.get("COMMAND_NAME", "termy") or "termy" # Default if not set or empty
+COMMAND_NAME = (
+    os.environ.get("COMMAND_NAME", "termy") or "termy"
+)  # Default if not set or empty
 
 # Conversation history configuration
 CONVERSATION_DIR = os.path.expanduser("~/.aitermy/conversations")
@@ -75,7 +82,9 @@ LOG_FILE = os.environ.get("LOG_FILE", "~/.aitermy/logs/aitermy.log")
 LOG_FILE = os.path.expanduser(LOG_FILE)
 
 # Console output configuration
-CONSOLE_OUTPUT_ENABLED = os.environ.get("CONSOLE_OUTPUT_ENABLED", "true").lower() == "true"
+CONSOLE_OUTPUT_ENABLED = (
+    os.environ.get("CONSOLE_OUTPUT_ENABLED", "true").lower() == "true"
+)
 CONSOLE_OUTPUT_MAX_TOKENS = int(os.environ.get("CONSOLE_OUTPUT_MAX_TOKENS", "2000"))
 CONSOLE_OUTPUT_MAX_ITEMS = int(os.environ.get("CONSOLE_OUTPUT_MAX_ITEMS", "10"))
 
@@ -310,7 +319,9 @@ def interactive_mode():
         if CONSOLE_OUTPUT_ENABLED:
             console_context = get_console_output_context()
             if console_context:
-                system_message += f"\n\nRecent console output context:\n{console_context}"
+                system_message += (
+                    f"\n\nRecent console output context:\n{console_context}"
+                )
 
         conversation_history = [{"role": "system", "content": system_message}]
 
@@ -525,11 +536,15 @@ def get_console_output_context():
                     if remaining_tokens > 100:  # Only add if we have meaningful space
                         max_chars = remaining_tokens * 4
                         content = content[:max_chars] + "\n[...truncated...]"
-                        context_parts.append(f"Console Output ({os.path.basename(filepath)}):\n{content}")
+                        context_parts.append(
+                            f"Console Output ({os.path.basename(filepath)}):\n{content}"
+                        )
                         total_tokens += remaining_tokens
                     break
                 else:
-                    context_parts.append(f"Console Output ({os.path.basename(filepath)}):\n{content}")
+                    context_parts.append(
+                        f"Console Output ({os.path.basename(filepath)}):\n{content}"
+                    )
                     total_tokens += content_tokens
 
             except Exception as e:
