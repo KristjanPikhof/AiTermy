@@ -2,6 +2,9 @@
 
 A powerful terminal AI assistant powered by OpenRouter, providing contextual assistance directly in your terminal. AiTermy can analyze your terminal output, file contents, or both to provide relevant and helpful responses.
 
+<p align="center">  <img width="830" height="925" alt="SCR-20251210-tmhl-modified" src="https://github.com/user-attachments/assets/c547cf0e-83c4-4b42-a2e8-bd3256e0fd84" /> </p>
+
+
 ## Features
 
 *   **Multiple AI Models**: Choose from various models available through OpenRouter.
