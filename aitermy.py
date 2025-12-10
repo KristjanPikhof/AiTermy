@@ -264,6 +264,12 @@ def interactive_mode():
         # Add system message for new conversations
         system_message = f"You are a helpful terminal assistant. You are running on {'macOS' if sys.platform == 'darwin' else 'Linux'}. Current location is {os.getcwd()}. "
         system_message += "Provide concise, direct answers suitable for terminal output. Use Markdown formatting where appropriate (like code blocks), but avoid overly long paragraphs. Focus directly on the user's question."
+
+        # Add console output context to system message
+        console_context = get_console_output_context()
+        if console_context:
+            system_message += f"\n\nRecent console output context:\n{console_context}"
+
         conversation_history = [{"role": "system", "content": system_message}]
 
     show_welcome_screen()
@@ -433,6 +439,64 @@ def start_new_conversation():
             log("Started new conversation (cleared history)")
     except Exception as e:
         log(f"Error clearing conversation history: {e}", "ERROR")
+
+
+def get_console_output_context():
+    """Get recent console output context for AI"""
+    log("Getting console output context")
+    output_dir = os.path.expanduser("~/.aitermy/console_outputs")
+
+    if not os.path.exists(output_dir):
+        log("Console output directory not found", "WARNING")
+        return ""
+
+    try:
+        # Get all output files, sorted by modification time (newest first)
+        output_files = []
+        for filename in os.listdir(output_dir):
+            if filename.startswith(("context_", "last_command_")):
+                filepath = os.path.join(output_dir, filename)
+                if os.path.isfile(filepath):
+                    output_files.append((filepath, os.path.getmtime(filepath)))
+
+        # Sort by modification time (newest first)
+        output_files.sort(key=lambda x: x[1], reverse=True)
+
+        context_parts = []
+        total_tokens = 0
+        max_tokens = 2000  # ~2000 tokens limit
+
+        for filepath, _ in output_files[:10]:  # Last 10 items max
+            try:
+                with open(filepath, "r") as f:
+                    content = f.read()
+
+                # Estimate tokens (rough approximation: 4 chars per token)
+                content_tokens = len(content) // 4
+                if total_tokens + content_tokens > max_tokens:
+                    # Truncate if we would exceed limit
+                    remaining_tokens = max_tokens - total_tokens
+                    if remaining_tokens > 100:  # Only add if we have meaningful space
+                        max_chars = remaining_tokens * 4
+                        content = content[:max_chars] + "\n[...truncated...]"
+                        context_parts.append(f"Console Output ({os.path.basename(filepath)}):\n{content}")
+                        total_tokens += remaining_tokens
+                    break
+                else:
+                    context_parts.append(f"Console Output ({os.path.basename(filepath)}):\n{content}")
+                    total_tokens += content_tokens
+
+            except Exception as e:
+                log(f"Error reading console output file {filepath}: {e}", "WARNING")
+
+        if context_parts:
+            return "\n\n".join(context_parts)
+        else:
+            return ""
+
+    except Exception as e:
+        log(f"Error getting console output context: {e}", "ERROR")
+        return ""
 
 
 def get_terminal_context(lines, command_name):
@@ -765,6 +829,7 @@ def main():
     # Add context information to the user's question
     user_prompt = ""
     context_added = False
+    console_context = ""
 
     if (hasattr(args, "lines") or not args.continue_convo) and not args.question:
         # Only add terminal context for new questions, not continuations
@@ -773,6 +838,13 @@ def main():
         if "Recent Terminal History" in terminal_context:
             user_prompt += f"\n\n{terminal_context}"
             context_added = True
+
+    # Add console output context automatically
+    console_context = get_console_output_context()
+    if console_context:
+        user_prompt += f"\n\n{console_context}"
+        context_added = True
+        log("Added console output context")
 
     # Handle multiple files
     if all_files:
@@ -835,6 +907,8 @@ def main():
             context_info = []
             if hasattr(args, "lines"):
                 context_info.append(f"{args.lines} lines of terminal output")
+            if console_context:
+                context_info.append("recent console outputs")
             if all_files:
                 if len(all_files) == 1:
                     context_info.append(f"content from {all_files[0]}")
