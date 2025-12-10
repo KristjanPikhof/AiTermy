@@ -10,6 +10,31 @@ import re
 import subprocess
 import sys
 
+# Auto-detect and use virtual environment if available
+def setup_virtual_environment():
+    """Automatically detect and use virtual environment if available"""
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    venv_path = os.path.join(script_dir, "venv")
+
+    # Check if we're already in a virtual environment
+    if hasattr(sys, 'real_prefix') or (hasattr(sys, 'base_prefix') and sys.base_prefix != sys.prefix):
+        return  # Already in venv
+
+    # Check if venv directory exists
+    if os.path.exists(venv_path):
+        # Determine the correct Python executable path
+        if os.name == 'nt':  # Windows
+            venv_python = os.path.join(venv_path, "Scripts", "python.exe")
+        else:  # Unix-like systems
+            venv_python = os.path.join(venv_path, "bin", "python")
+
+        if os.path.exists(venv_python):
+            # Restart the script with the virtual environment's Python
+            os.execv(venv_python, [venv_python] + sys.argv)
+
+# Set up virtual environment before importing dependencies
+setup_virtual_environment()
+
 import requests
 from dotenv import load_dotenv
 from rich.align import Align
@@ -37,7 +62,7 @@ OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
 DEFAULT_LINES = 10
 
 # Command Name (set during setup)
-COMMAND_NAME = os.environ.get("COMMAND_NAME", "aitermy")  # Default if not set
+COMMAND_NAME = os.environ.get("COMMAND_NAME", "termy") or "termy" # Default if not set or empty
 
 # Conversation history configuration
 CONVERSATION_DIR = os.path.expanduser("~/.aitermy/conversations")
@@ -48,6 +73,11 @@ MAX_CONVERSATION_TURNS = 10  # Maximum number of turns to keep in history
 LOGGING_ENABLED = os.environ.get("LOGGING_ENABLED", "false").lower() == "true"
 LOG_FILE = os.environ.get("LOG_FILE", "~/.aitermy/logs/aitermy.log")
 LOG_FILE = os.path.expanduser(LOG_FILE)
+
+# Console output configuration
+CONSOLE_OUTPUT_ENABLED = os.environ.get("CONSOLE_OUTPUT_ENABLED", "true").lower() == "true"
+CONSOLE_OUTPUT_MAX_TOKENS = int(os.environ.get("CONSOLE_OUTPUT_MAX_TOKENS", "2000"))
+CONSOLE_OUTPUT_MAX_ITEMS = int(os.environ.get("CONSOLE_OUTPUT_MAX_ITEMS", "10"))
 
 # Setup logging if enabled
 if LOGGING_ENABLED:
@@ -235,6 +265,17 @@ def show_session_summary(conversation_history, start_time):
     session_duration = datetime.datetime.now() - start_time
     duration_str = f"{session_duration.seconds // 60}m {session_duration.seconds % 60}s"
 
+    # Calculate console output statistics
+    console_stats = ""
+    if CONSOLE_OUTPUT_ENABLED:
+        # Estimate tokens used for console output in system message
+        console_context = get_console_output_context()
+        if console_context:
+            estimated_tokens = len(console_context) // 4  # Rough estimation
+            console_stats = f"\n• Console output: ~{estimated_tokens} tokens"
+        else:
+            console_stats = f"\n• Console output: enabled (no recent data)"
+
     summary_panel = Panel(
         f"""[bold green]Session Summary[/bold green]
 
@@ -242,7 +283,7 @@ def show_session_summary(conversation_history, start_time):
 • Questions asked: {user_turns}
 • Answers received: {assistant_turns}
 • Session duration: {duration_str}
-• Model used: {OPENROUTER_MODEL}
+• Model used: {OPENROUTER_MODEL}{console_stats}
 
 [dim]💾 Conversation saved to: ~/.aitermy/conversations/[/dim]
 [dim]🔄 Continue anytime with: {COMMAND_NAME} "follow-up question"[/dim]""",
@@ -266,9 +307,10 @@ def interactive_mode():
         system_message += "Provide concise, direct answers suitable for terminal output. Use Markdown formatting where appropriate (like code blocks), but avoid overly long paragraphs. Focus directly on the user's question."
 
         # Add console output context to system message
-        console_context = get_console_output_context()
-        if console_context:
-            system_message += f"\n\nRecent console output context:\n{console_context}"
+        if CONSOLE_OUTPUT_ENABLED:
+            console_context = get_console_output_context()
+            if console_context:
+                system_message += f"\n\nRecent console output context:\n{console_context}"
 
         conversation_history = [{"role": "system", "content": system_message}]
 
@@ -443,6 +485,10 @@ def start_new_conversation():
 
 def get_console_output_context():
     """Get recent console output context for AI"""
+    if not CONSOLE_OUTPUT_ENABLED:
+        log("Console output context disabled")
+        return ""
+
     log("Getting console output context")
     output_dir = os.path.expanduser("~/.aitermy/console_outputs")
 
@@ -464,9 +510,9 @@ def get_console_output_context():
 
         context_parts = []
         total_tokens = 0
-        max_tokens = 2000  # ~2000 tokens limit
+        max_tokens = CONSOLE_OUTPUT_MAX_TOKENS
 
-        for filepath, _ in output_files[:10]:  # Last 10 items max
+        for filepath, _ in output_files[:CONSOLE_OUTPUT_MAX_ITEMS]:
             try:
                 with open(filepath, "r") as f:
                     content = f.read()
@@ -628,13 +674,13 @@ def show_help():
 
 ## Interactive Mode (Recommended)
 ```
-{os.environ.get("COMMAND_NAME", "aitermy")}
+ {os.environ.get("COMMAND_NAME", "termy")}
 ```
 Just type the command name to enter interactive mode with a friendly interface!
 
 ## Command Line Usage
 ```
-{os.environ.get("COMMAND_NAME", "aitermy")} "Your question here"
+ai "Your question here"
 ```
 
 ## Options
@@ -648,27 +694,27 @@ Just type the command name to enter interactive mode with a friendly interface!
 ## File Usage Examples
 ```
 # Single file
-{os.environ.get("COMMAND_NAME", "aitermy")} "Explain this code" -f app.js
+ {os.environ.get("COMMAND_NAME", "termy")} "Explain this code" -f app.js
 
 # Multiple files using repeated -f
-{os.environ.get("COMMAND_NAME", "aitermy")} "Compare these implementations" -f file1.py -f file2.py
+ {os.environ.get("COMMAND_NAME", "termy")} "Compare these implementations" -f file1.py -f file2.py
 
 # Multiple files using comma-separated list
-{os.environ.get("COMMAND_NAME", "aitermy")} "Find bugs in these components" -F "header.jsx,sidebar.jsx,footer.jsx"
+ {os.environ.get("COMMAND_NAME", "termy")} "Find bugs in these components" -F "header.jsx,sidebar.jsx,footer.jsx"
 ```
 
 ## Conversation Behavior
-* By default, `{os.environ.get("COMMAND_NAME", "aitermy")} "question"` continues your previous conversation
+* By default, `{os.environ.get("COMMAND_NAME", "termy")} "question"` continues your previous conversation
 * Use `-n` to start a new conversation when needed
 * Use `-c` when you want to explicitly mark a question as continuing the conversation
 * Conversation history is stored in `~/.aitermy/conversations/`
 
 ## More Examples
 ```
-{os.environ.get("COMMAND_NAME", "aitermy")} "What does this error mean?" -l 20
-{os.environ.get("COMMAND_NAME", "aitermy")} "How to fix this bug?" -l 10 -f error.log
-{os.environ.get("COMMAND_NAME", "aitermy")} -n "Let's discuss a new topic"
-{os.environ.get("COMMAND_NAME", "aitermy")} "Can you tell me more about that?" # Continues conversation by default
+ {os.environ.get("COMMAND_NAME", "termy")} "What does this error mean?" -l 20
+ {os.environ.get("COMMAND_NAME", "termy")} "How to fix this bug?" -l 10 -f error.log
+ {os.environ.get("COMMAND_NAME", "termy")} -n "Let's discuss a new topic"
+ {os.environ.get("COMMAND_NAME", "termy")} "Can you tell me more about that?" # Continues conversation by default
 ```
 
 ## Current Configuration
@@ -840,11 +886,12 @@ def main():
             context_added = True
 
     # Add console output context automatically
-    console_context = get_console_output_context()
-    if console_context:
-        user_prompt += f"\n\n{console_context}"
-        context_added = True
-        log("Added console output context")
+    if CONSOLE_OUTPUT_ENABLED:
+        console_context = get_console_output_context()
+        if console_context:
+            user_prompt += f"\n\n{console_context}"
+            context_added = True
+            log("Added console output context")
 
     # Handle multiple files
     if all_files:
@@ -907,7 +954,7 @@ def main():
             context_info = []
             if hasattr(args, "lines"):
                 context_info.append(f"{args.lines} lines of terminal output")
-            if console_context:
+            if CONSOLE_OUTPUT_ENABLED and console_context:
                 context_info.append("recent console outputs")
             if all_files:
                 if len(all_files) == 1:

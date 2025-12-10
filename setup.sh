@@ -105,8 +105,13 @@ if [ -f ".env" ]; then
   EXISTING_MODEL=$(grep -i '^[[:space:]]*OPENROUTER_MODEL' .env | sed -n 's/^[[:space:]]*OPENROUTER_MODEL[[:space:]]*=[[:space:]]*"\([^"]*\)".*/\1/p')
   EXISTING_COMMAND=$(grep -i '^[[:space:]]*COMMAND_NAME' .env | sed -n 's/^[[:space:]]*COMMAND_NAME[[:space:]]*=[[:space:]]*"\([^"]*\)".*/\1/p')
   EXISTING_LOGGING=$(grep -i '^[[:space:]]*LOGGING_ENABLED' .env | sed -n 's/^[[:space:]]*LOGGING_ENABLED[[:space:]]*=[[:space:]]*"\([^"]*\)".*/\1/p')
-  EXISTING_LOG_FILE=$(grep -i '^[[:space:]]*LOG_FILE' .env | sed -n 's/^[[:space:]]*LOG_FILE[[:space:]]*=[[:space:]]*"\([^"]*\)".*/\1/p')
-  
+   EXISTING_LOG_FILE=$(grep -i '^[[:space:]]*LOG_FILE' .env | sed -n 's/^[[:space:]]*LOG_FILE[[:space:]]*=[[:space:]]*"\([^"]*\)".*/\1/p')
+
+   # Handle console output settings
+   EXISTING_CONSOLE_ENABLED=$(grep -i '^[[:space:]]*CONSOLE_OUTPUT_ENABLED' .env | sed -n 's/^[[:space:]]*CONSOLE_OUTPUT_ENABLED[[:space:]]*=[[:space:]]*"\([^"]*\)".*/\1/p')
+   EXISTING_CONSOLE_MAX_TOKENS=$(grep -i '^[[:space:]]*CONSOLE_OUTPUT_MAX_TOKENS' .env | sed -n 's/^[[:space:]]*CONSOLE_OUTPUT_MAX_TOKENS[[:space:]]*=[[:space:]]*"\([^"]*\)".*/\1/p')
+   EXISTING_CONSOLE_MAX_ITEMS=$(grep -i '^[[:space:]]*CONSOLE_OUTPUT_MAX_ITEMS' .env | sed -n 's/^[[:space:]]*CONSOLE_OUTPUT_MAX_ITEMS[[:space:]]*=[[:space:]]*"\([^"]*\)".*/\1/p')
+
   # Handle command name
   if [ -n "$EXISTING_COMMAND" ]; then
     if confirm "Keep existing command name '$EXISTING_COMMAND'?"; then
@@ -120,7 +125,7 @@ if [ -f ".env" ]; then
     read -r -p "Enter the desired command name (e.g., ai, termy, ask): " COMMAND_NAME
     echo -e "${GREEN}Using command name: ${COMMAND_NAME}${NC}"
   fi
-  
+
   # Handle API key
   if [ -n "$EXISTING_API_KEY" ]; then
     MASKED_KEY="${EXISTING_API_KEY:0:6}...${EXISTING_API_KEY: -4}"
@@ -137,7 +142,7 @@ if [ -f ".env" ]; then
     echo # Newline after hidden input
     echo -e "${GREEN}API key received${NC}"
   fi
-  
+
   # Handle model
   if [ -n "$EXISTING_MODEL" ]; then
     if confirm "Keep existing model '$EXISTING_MODEL'?"; then
@@ -146,22 +151,22 @@ if [ -f ".env" ]; then
     else
       echo -e "${CYAN}Available models include:${NC}"
       echo -e "  ${WHITE}meta-llama/llama-4-scout${NC} (fast responses & cost-effective)"
-      echo -e "  ${WHITE}google/gemini-2.0-flash-001${NC} (more capable & cost-effective)"
-      echo -e "  ${WHITE}anthropic/claude-3.7-sonnet${NC} (most capable but expensive)"
-      echo -e "  ${WHITE}google/gemini-2.5-pro-preview-03-25${NC} (balanced)"
-      read -r -p "Enter your preferred model (default: google/gemini-2.5-pro-preview-03-25): " MODEL_INPUT
+      echo -e "  ${WHITE}google/gemini-2.5-flash${NC} (more capable & cost-effective)"
+      echo -e "  ${WHITE}openai/gpt-5.1${NC} (most capable but expensive)"
+      echo -e "  ${WHITE}anthropic/claude-haiku-4.5${NC} (balanced)"
+      read -r -p "Enter your preferred model (default: x-ai/grok-4.1-fast): " MODEL_INPUT
       if [ -z "$MODEL_INPUT" ]; then
-        PREFERRED_MODEL="google/gemini-2.5-pro-preview-03-25"
+        PREFERRED_MODEL="x-ai/grok-4.1-fast"
       else
         PREFERRED_MODEL="$MODEL_INPUT"
       fi
       echo -e "${GREEN}Using model: ${PREFERRED_MODEL}${NC}"
     fi
   else
-    PREFERRED_MODEL="google/gemini-2.5-pro-preview-03-25"
+    PREFERRED_MODEL="x-ai/grok-4.1-fast"
     echo -e "${GREEN}Using default model: ${PREFERRED_MODEL}${NC}"
   fi
-  
+
   # Handle logging
   if [ -n "$EXISTING_LOGGING" ]; then
     LOGGING_ENABLED="$EXISTING_LOGGING"
@@ -170,39 +175,92 @@ if [ -f ".env" ]; then
     LOGGING_ENABLED="false"
     echo -e "${GREEN}Using default logging setting: ${LOGGING_ENABLED}${NC}"
   fi
-  
-  # Handle log file
-  if [ -n "$EXISTING_LOG_FILE" ]; then
-    LOG_FILE="$EXISTING_LOG_FILE"
-    echo -e "${GREEN}Using existing log file path: ${LOG_FILE}${NC}"
-  else
-    LOG_FILE="~/.aitermy/logs/aitermy.log"
-    echo -e "${GREEN}Using default log file path: ${LOG_FILE}${NC}"
-  fi
-  
+
+   # Handle log file
+   if [ -n "$EXISTING_LOG_FILE" ]; then
+     LOG_FILE="$EXISTING_LOG_FILE"
+     echo -e "${GREEN}Using existing log file path: ${LOG_FILE}${NC}"
+   else
+   LOG_FILE="~/.aitermy/logs/aitermy.log"
+   echo -e "${GREEN}Using default log file path: ${LOG_FILE}${NC}"
+
+
+ fi
+
+   # Handle console output settings
+   if [ -n "$EXISTING_CONSOLE_ENABLED" ]; then
+     CONSOLE_OUTPUT_ENABLED="$EXISTING_CONSOLE_ENABLED"
+     echo -e "${GREEN}Using existing console output setting: ${CONSOLE_OUTPUT_ENABLED}${NC}"
+   else
+     CONSOLE_OUTPUT_ENABLED="true"
+     echo -e "${GREEN}Using default console output setting: ${CONSOLE_OUTPUT_ENABLED}${NC}"
+   fi
+
+   if [ -n "$EXISTING_CONSOLE_MAX_TOKENS" ]; then
+     CONSOLE_OUTPUT_MAX_TOKENS="$EXISTING_CONSOLE_MAX_TOKENS"
+     echo -e "${GREEN}Using existing console max tokens: ${CONSOLE_OUTPUT_MAX_TOKENS}${NC}"
+   else
+     CONSOLE_OUTPUT_MAX_TOKENS="2000"
+     echo -e "${GREEN}Using default console max tokens: ${CONSOLE_OUTPUT_MAX_TOKENS}${NC}"
+   fi
+
+   if [ -n "$EXISTING_CONSOLE_MAX_ITEMS" ]; then
+     CONSOLE_OUTPUT_MAX_ITEMS="$EXISTING_CONSOLE_MAX_ITEMS"
+     echo -e "${GREEN}Using existing console max items: ${CONSOLE_OUTPUT_MAX_ITEMS}${NC}"
+   else
+     CONSOLE_OUTPUT_MAX_ITEMS="10"
+     echo -e "${GREEN}Using default console max items: ${CONSOLE_OUTPUT_MAX_ITEMS}${NC}"
+   fi
+
 else
   # No existing .env file - proceed with normal setup
-  
-  # Get command name
-  read -r -p "Enter the desired command name (e.g., ai, termy, ask): " COMMAND_NAME
-  echo -e "${GREEN}Using command name: ${COMMAND_NAME}${NC}"
-  
+
+   # Get command name (defaults to termy)
+   read -r -p "Enter the desired command name (e.g., ai, termy, ask) [termy]: " COMMAND_NAME
+   COMMAND_NAME="${COMMAND_NAME:-termy}"
+   echo -e "${GREEN}Using command name: ${COMMAND_NAME}${NC}"
+
   # Get API key
   read -r -s -p "Enter your OpenRouter API key: " API_KEY
   echo # Newline after hidden input
   echo -e "${GREEN}API key received${NC}"
-  
+
   # Get preferred model
-  PREFERRED_MODEL="google/gemini-2.5-pro-preview-03-25"
+  PREFERRED_MODEL="x-ai/grok-4.1-fast"
   echo -e "${GREEN}Using model: ${PREFERRED_MODEL}${NC}"
-  
+
   # Set logging defaults
   LOGGING_ENABLED="false"
   echo -e "${GREEN}Using default logging setting: ${LOGGING_ENABLED}${NC}"
-  
-  LOG_FILE="~/.aitermy/logs/aitermy.log"
-  echo -e "${GREEN}Using default log file path: ${LOG_FILE}${NC}"
-fi
+
+   LOG_FILE="~/.aitermy/logs/aitermy.log"
+   echo -e "${GREEN}Using default log file path: ${LOG_FILE}${NC}"
+
+   # Set console output defaults
+   CONSOLE_OUTPUT_ENABLED="true"
+   CONSOLE_OUTPUT_MAX_TOKENS="2000"
+   CONSOLE_OUTPUT_MAX_ITEMS="10"
+
+    # Configure console output (defaults to enabled)
+    read -r -p "Enable automatic console output capture for AI context? [Y/n]: " CONSOLE_RESPONSE
+    case "$CONSOLE_RESPONSE" in
+      [nN][oO]|[nN])
+        CONSOLE_OUTPUT_ENABLED="false"
+        CONSOLE_OUTPUT_MAX_TOKENS="2000"
+        CONSOLE_OUTPUT_MAX_ITEMS="10"
+        echo -e "${YELLOW}Console output disabled${NC}"
+        ;;
+      *)
+        # Default to enabled (empty input or yes)
+        CONSOLE_OUTPUT_ENABLED="true"
+        read -r -p "Maximum tokens for console output (default: 2000): " MAX_TOKENS_INPUT
+        CONSOLE_OUTPUT_MAX_TOKENS="${MAX_TOKENS_INPUT:-2000}"
+        read -r -p "Maximum console items to include (default: 10): " MAX_ITEMS_INPUT
+        CONSOLE_OUTPUT_MAX_ITEMS="${MAX_ITEMS_INPUT:-10}"
+        echo -e "${GREEN}Console output enabled: ${CONSOLE_OUTPUT_MAX_TOKENS} tokens, ${CONSOLE_OUTPUT_MAX_ITEMS} items${NC}"
+        ;;
+    esac
+ fi
 
 # Create .env file
 echo "OPENROUTER_API_KEY=\"$API_KEY\"" > .env
@@ -210,6 +268,9 @@ echo "OPENROUTER_MODEL=\"$PREFERRED_MODEL\"" >> .env
 echo "COMMAND_NAME=\"$COMMAND_NAME\"" >> .env
 echo "LOGGING_ENABLED=\"$LOGGING_ENABLED\"" >> .env
 echo "LOG_FILE=\"$LOG_FILE\"" >> .env
+echo "CONSOLE_OUTPUT_ENABLED=\"$CONSOLE_OUTPUT_ENABLED\"" >> .env
+echo "CONSOLE_OUTPUT_MAX_TOKENS=\"$CONSOLE_OUTPUT_MAX_TOKENS\"" >> .env
+echo "CONSOLE_OUTPUT_MAX_ITEMS=\"$CONSOLE_OUTPUT_MAX_ITEMS\"" >> .env
 echo -e "${GREEN}Created .env file${NC}"
 
 # Secure permissions
@@ -224,7 +285,7 @@ cat > .aitermy_config.zsh << 'EOF'
 function COMMAND_NAME {
   # Use absolute path for the script
   AI_TERM_PATH="INSTALL_DIR"
-  
+
   # Call the main python script with proper quoting
   command PYTHON_CMD_PLACEHOLDER "$AI_TERM_PATH/aitermy.py" "$@"
 }
@@ -249,7 +310,7 @@ echo -e "${GREEN}Created command configuration${NC}"
 if confirm "Set up virtual environment?"; then
   echo -e "${CYAN}Setting up virtual environment...${NC}"
   $PYTHON_CMD -m venv venv
-  
+
   # Define paths to virtual environment executables
   if [ -f "venv/bin/python" ]; then
     VENV_PYTHON="$INSTALL_DIR/venv/bin/python"
@@ -262,12 +323,12 @@ if confirm "Set up virtual environment?"; then
     echo -e "${RED}Error: Could not locate Python in the virtual environment.${NC}"
     exit 1
   fi
-  
+
   # Install dependencies using the virtual environment's pip
   echo -e "${CYAN}Installing dependencies...${NC}"
   "$VENV_PYTHON" -m pip install --upgrade pip
   "$VENV_PYTHON" -m pip install -r requirements.txt
-  
+
   # Update to use venv python
   if [[ "$OSTYPE" == "darwin"* ]]; then
     # macOS sed
@@ -293,4 +354,4 @@ fi
 # Done!
 echo -e "${MAGENTA}Installation complete!${NC}"
 echo -e "${GREEN}You can now use the '${COMMAND_NAME}' command${NC}"
-exit 0 
+exit 0
