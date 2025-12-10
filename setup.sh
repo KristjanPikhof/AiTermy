@@ -99,7 +99,7 @@ echo -e "${CYAN}Using installation directory: ${INSTALL_DIR}${NC}"
 # Check for existing .env file
 if [ -f ".env" ]; then
   echo -e "${YELLOW}Found existing .env file. Reading configuration...${NC}"
-  
+
   # Read existing values
   EXISTING_API_KEY=$(grep -i '^[[:space:]]*OPENROUTER_API_KEY' .env | sed -n 's/^[[:space:]]*OPENROUTER_API_KEY[[:space:]]*=[[:space:]]*"\([^"]*\)".*/\1/p')
   EXISTING_MODEL=$(grep -i '^[[:space:]]*OPENROUTER_MODEL' .env | sed -n 's/^[[:space:]]*OPENROUTER_MODEL[[:space:]]*=[[:space:]]*"\([^"]*\)".*/\1/p')
