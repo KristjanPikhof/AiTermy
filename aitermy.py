@@ -52,7 +52,7 @@ from rich.spinner import Spinner
 from rich.text import Text
 
 # Version information
-VERSION = "2.1.0"
+VERSION = "2.1.1"
 
 # Load environment variables from .env file in script directory
 script_dir = os.path.dirname(os.path.abspath(__file__))
@@ -131,7 +131,7 @@ def show_welcome_screen():
         Align.center(
             f"[bold cyan]🤖 AiTermy Terminal Assistant v{VERSION}[/bold cyan]\n\n"
             f"[dim]Type your questions and press Enter[/dim]\n"
-            f"[dim]Commands: /help, /history, /quit, /exit[/dim]\n"
+            f"[dim]Commands: /h(elp), /hi(story), /c(lear), /q(uit), /m(odel)[/dim]\n"
             f"[dim]Model: {OPENROUTER_MODEL}[/dim]"
         ),
         title="[bold blue]Welcome[/bold blue]",
@@ -147,11 +147,11 @@ def show_interactive_help():
     help_text = """
 # Interactive Mode Commands
 
-* **/help** - Show this help
-* **/history** - View conversation history
-* **/clear** - Clear current conversation
-* **/quit** or **/exit** - Exit interactive mode
-* **/model** - Show current model info
+* **/help** (/h) - Show this help
+* **/history** (/hi) - View conversation history
+* **/clear** (/c) - Clear current conversation
+* **/quit** (/q) or **/exit** - Exit interactive mode
+* **/model** (/m) - Show current model info
 
 ## Regular Usage
 Just type your question and press Enter. The conversation continues automatically.
@@ -338,20 +338,20 @@ def interactive_mode():
                     continue
 
                 # Handle commands
-                if user_input.lower() in ["/quit", "/exit", "exit", "quit"]:
+                if user_input.lower() in ["/quit", "/exit", "/q", "/e", "exit", "quit"]:
                     console.print()  # Add spacing
                     show_session_summary(conversation_history, session_start)
                     console.print("[bold green]👋 Goodbye![/bold green]")
                     break
-                elif user_input.lower() in ["/help", "help", "?"]:
+                elif user_input.lower() in ["/help", "/h", "help", "?"]:
                     show_interactive_help()
                     console.print()  # Add spacing
                     continue
-                elif user_input.lower() in ["/history", "history"]:
+                elif user_input.lower() in ["/history", "/hi", "history"]:
                     show_conversation_history()
                     console.print()  # Add spacing
                     continue
-                elif user_input.lower() in ["/clear", "clear"]:
+                elif user_input.lower() in ["/clear", "/c", "clear"]:
                     confirm_clear = Confirm.ask(
                         "[yellow]Clear current conversation?[/yellow]"
                     )
@@ -371,7 +371,7 @@ def interactive_mode():
                         console.print(success_panel)
                     console.print()
                     continue
-                elif user_input.lower() in ["/model", "model"]:
+                elif user_input.lower() in ["/model", "/m", "model"]:
                     model_panel = Panel(
                         f"[dim]🤖 Current model: {OPENROUTER_MODEL}[/dim]",
                         border_style="blue",
