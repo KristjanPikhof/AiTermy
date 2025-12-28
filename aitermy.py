@@ -10,18 +10,32 @@ import re
 import subprocess
 import sys
 
+try:
+    import tomllib  # Python 3.11+
+except ImportError:
+    try:
+        import tomli as tomllib  # Fallback for Python 3.8-3.10
+    except ImportError:
+        tomllib = None
+
 
 # Auto-detect and use virtual environment if available
 def setup_virtual_environment():
     """Automatically detect and use virtual environment if available"""
-    script_dir = os.path.dirname(os.path.abspath(__file__))
-    venv_path = os.path.join(script_dir, "venv")
-
     # Check if we're already in a virtual environment
     if hasattr(sys, "real_prefix") or (
         hasattr(sys, "base_prefix") and sys.base_prefix != sys.prefix
     ):
         return  # Already in venv
+
+    # First try ~/.aitermy/venv (V3 location)
+    aitermy_home = os.path.expanduser("~/.aitermy")
+    venv_path = os.path.join(aitermy_home, "venv")
+
+    # Fallback to script directory venv (V2 compatibility)
+    if not os.path.exists(venv_path):
+        script_dir = os.path.dirname(os.path.abspath(__file__))
+        venv_path = os.path.join(script_dir, "venv")
 
     # Check if venv directory exists
     if os.path.exists(venv_path):
@@ -52,41 +66,92 @@ from rich.spinner import Spinner
 from rich.text import Text
 
 # Version information
-VERSION = "2.1.1"
+VERSION = "3.0.0"
 
-# Load environment variables from .env file in script directory
-script_dir = os.path.dirname(os.path.abspath(__file__))
-load_dotenv(os.path.join(script_dir, ".env"))  # Use .env for production
+# AiTermy home directory
+AITERMY_HOME = os.path.expanduser("~/.aitermy")
+
+
+def load_config():
+    """Load configuration from TOML file or fall back to .env"""
+    config = {}
+
+    # Try V3 TOML config first
+    toml_config_path = os.path.join(AITERMY_HOME, "config.toml")
+    if tomllib and os.path.exists(toml_config_path):
+        try:
+            with open(toml_config_path, "rb") as f:
+                config = tomllib.load(f)
+            return config
+        except Exception:
+            pass  # Fall through to .env
+
+    # Fall back to V2 .env (for backward compatibility)
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    env_path = os.path.join(script_dir, ".env")
+    if os.path.exists(env_path):
+        load_dotenv(env_path)
+
+    # Build config from environment variables
+    config = {
+        "api": {
+            "key": os.environ.get("OPENROUTER_API_KEY", ""),
+            "model": os.environ.get("OPENROUTER_MODEL", "x-ai/grok-4.1-fast"),
+        },
+        "context": {
+            "include_history": True,
+            "history_lines": 20,
+            "include_env": True,
+            "max_context_tokens": int(os.environ.get("CONSOLE_OUTPUT_MAX_TOKENS", "2000")),
+        },
+        "ui": {
+            "command": os.environ.get("COMMAND_NAME", "ai"),
+        },
+        "logging": {
+            "enabled": os.environ.get("LOGGING_ENABLED", "false").lower() == "true",
+            "file": os.environ.get("LOG_FILE", "~/.aitermy/logs/aitermy.log"),
+        },
+        "conversation": {
+            "max_turns": 10,
+            "storage_dir": "~/.aitermy/data/conversations",
+        },
+    }
+    return config
+
+
+# Load configuration
+CONFIG = load_config()
 
 # OpenRouter info
-OPENROUTER_API_KEY = os.environ.get("OPENROUTER_API_KEY")
-OPENROUTER_MODEL = os.environ.get(
-    "OPENROUTER_MODEL", "meta-llama/llama-4-scout"
-)  # Default model
+OPENROUTER_API_KEY = CONFIG.get("api", {}).get("key", "")
+OPENROUTER_MODEL = CONFIG.get("api", {}).get("model", "x-ai/grok-4.1-fast")
 OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
-DEFAULT_LINES = 10
+DEFAULT_LINES = CONFIG.get("context", {}).get("history_lines", 20)
 
-# Command Name (set during setup)
-COMMAND_NAME = (
-    os.environ.get("COMMAND_NAME", "termy") or "termy"
-)  # Default if not set or empty
+# Command Name
+COMMAND_NAME = CONFIG.get("ui", {}).get("command", "ai") or "ai"
 
 # Conversation history configuration
-CONVERSATION_DIR = os.path.expanduser("~/.aitermy/conversations")
+CONVERSATION_DIR = os.path.expanduser(
+    CONFIG.get("conversation", {}).get("storage_dir", "~/.aitermy/data/conversations")
+)
 CURRENT_CONVERSATION_FILE = os.path.join(CONVERSATION_DIR, "current_conversation.pkl")
-MAX_CONVERSATION_TURNS = 10  # Maximum number of turns to keep in history
+MAX_CONVERSATION_TURNS = CONFIG.get("conversation", {}).get("max_turns", 10)
 
 # Logging configuration
-LOGGING_ENABLED = os.environ.get("LOGGING_ENABLED", "false").lower() == "true"
-LOG_FILE = os.environ.get("LOG_FILE", "~/.aitermy/logs/aitermy.log")
-LOG_FILE = os.path.expanduser(LOG_FILE)
-
-# Console output configuration
-CONSOLE_OUTPUT_ENABLED = (
-    os.environ.get("CONSOLE_OUTPUT_ENABLED", "true").lower() == "true"
+LOGGING_ENABLED = CONFIG.get("logging", {}).get("enabled", False)
+LOG_FILE = os.path.expanduser(
+    CONFIG.get("logging", {}).get("file", "~/.aitermy/logs/aitermy.log")
 )
-CONSOLE_OUTPUT_MAX_TOKENS = int(os.environ.get("CONSOLE_OUTPUT_MAX_TOKENS", "2000"))
-CONSOLE_OUTPUT_MAX_ITEMS = int(os.environ.get("CONSOLE_OUTPUT_MAX_ITEMS", "10"))
+
+# Context configuration
+CONTEXT_INCLUDE_HISTORY = CONFIG.get("context", {}).get("include_history", True)
+CONTEXT_MAX_TOKENS = CONFIG.get("context", {}).get("max_context_tokens", 2000)
+
+# Legacy console output configuration (for backward compatibility)
+CONSOLE_OUTPUT_ENABLED = True
+CONSOLE_OUTPUT_MAX_TOKENS = CONTEXT_MAX_TOKENS
+CONSOLE_OUTPUT_MAX_ITEMS = 10
 
 # Setup logging if enabled
 if LOGGING_ENABLED:
@@ -125,11 +190,67 @@ def log(message, level="INFO"):
 console = Console()
 
 
-def show_welcome_screen():
+def build_system_message(shell_context=None):
+    """Build the system message with full context"""
+    if shell_context is None:
+        shell_context = get_shell_context()
+
+    os_type = "macOS" if sys.platform == "darwin" else "Linux"
+    pwd = shell_context.get("pwd", os.getcwd())
+    shell = shell_context.get("shell", "unknown")
+    v3_mode = shell_context.get("v3_mode", False)
+
+    # Base system message
+    system_message = f"You are a helpful terminal AI assistant running on {os_type}."
+    system_message += f"\nCurrent directory: {pwd}"
+
+    if v3_mode:
+        # V3 mode: we have rich context from shell integration
+        if shell_context.get("oldpwd"):
+            system_message += f"\nPrevious directory: {shell_context['oldpwd']}"
+        if shell:
+            shell_version = shell_context.get("shell_version", "")
+            system_message += f"\nShell: {shell}" + (f" {shell_version}" if shell_version else "")
+        if shell_context.get("user") and shell_context.get("host"):
+            system_message += f"\nUser: {shell_context['user']}@{shell_context['host']}"
+
+        # Add recent command history from shell
+        history = shell_context.get("history", "")
+        if history:
+            system_message += f"\n\nRecent commands:\n{history}"
+
+        # Add last command and its exit status
+        last_cmd = shell_context.get("last_cmd", "")
+        last_status = shell_context.get("last_status", "0")
+        if last_cmd:
+            status_text = "succeeded" if last_status == "0" else f"failed (exit code {last_status})"
+            system_message += f"\n\nLast command: {last_cmd} ({status_text})"
+
+    system_message += "\n\nProvide concise, direct answers suitable for terminal output. "
+    system_message += "Use Markdown formatting where appropriate (like code blocks), but avoid overly long paragraphs. "
+    system_message += "Focus directly on the user's question."
+
+    return system_message
+
+
+def show_welcome_screen(shell_context=None):
     """Display a welcome screen for interactive mode"""
+    if shell_context is None:
+        shell_context = get_shell_context()
+
+    pwd = shell_context.get("pwd", os.getcwd())
+    shell = shell_context.get("shell", "")
+    v3_mode = shell_context.get("v3_mode", False)
+
+    # Build context indicator
+    context_info = f"[dim]{pwd}[/dim]"
+    if v3_mode and shell:
+        context_info += f" [dim]({shell})[/dim]"
+
     welcome_panel = Panel(
         Align.center(
-            f"[bold cyan]🤖 AiTermy Terminal Assistant v{VERSION}[/bold cyan]\n\n"
+            f"[bold cyan]AiTermy Terminal Assistant v{VERSION}[/bold cyan]\n\n"
+            f"{context_info}\n\n"
             f"[dim]Type your questions and press Enter[/dim]\n"
             f"[dim]Commands: /h(elp), /hi(story), /c(lear), /q(uit), /m(odel)[/dim]\n"
             f"[dim]Model: {OPENROUTER_MODEL}[/dim]"
@@ -308,14 +429,16 @@ def interactive_mode():
     log("Starting interactive mode")
     session_start = datetime.datetime.now()
 
+    # Get shell context (from V3 shell integration or fallback)
+    shell_context = get_shell_context()
+
     # Load existing conversation
     conversation_history = load_conversation_history()
     if not conversation_history:
-        # Add system message for new conversations
-        system_message = f"You are a helpful terminal assistant. You are running on {'macOS' if sys.platform == 'darwin' else 'Linux'}. Current location is {os.getcwd()}. "
-        system_message += "Provide concise, direct answers suitable for terminal output. Use Markdown formatting where appropriate (like code blocks), but avoid overly long paragraphs. Focus directly on the user's question."
+        # Build system message with full context
+        system_message = build_system_message(shell_context)
 
-        # Add console output context to system message
+        # Add console output context if available (for legacy compatibility)
         if CONSOLE_OUTPUT_ENABLED:
             console_context = get_console_output_context()
             if console_context:
@@ -325,7 +448,7 @@ def interactive_mode():
 
         conversation_history = [{"role": "system", "content": system_message}]
 
-    show_welcome_screen()
+    show_welcome_screen(shell_context)
 
     try:
         while True:
@@ -492,6 +615,34 @@ def start_new_conversation():
             log("Started new conversation (cleared history)")
     except Exception as e:
         log(f"Error clearing conversation history: {e}", "ERROR")
+
+
+def get_shell_context():
+    """Get context passed from shell integration (V3 approach)"""
+    context = {
+        "pwd": os.environ.get("AITERMY_PWD", ""),
+        "oldpwd": os.environ.get("AITERMY_OLDPWD", ""),
+        "shell": os.environ.get("AITERMY_SHELL", ""),
+        "shell_version": os.environ.get("AITERMY_SHELL_VERSION", ""),
+        "history": os.environ.get("AITERMY_HISTORY", ""),
+        "last_cmd": os.environ.get("AITERMY_LAST_CMD", ""),
+        "last_status": os.environ.get("AITERMY_LAST_STATUS", "0"),
+        "term_cols": os.environ.get("AITERMY_TERM_COLS", "80"),
+        "term_lines": os.environ.get("AITERMY_TERM_LINES", "24"),
+        "tty": os.environ.get("AITERMY_TTY", ""),
+        "user": os.environ.get("AITERMY_USER", os.environ.get("USER", "")),
+        "host": os.environ.get("AITERMY_HOST", ""),
+    }
+
+    # Check if we have V3 shell integration (AITERMY_PWD is set)
+    context["v3_mode"] = bool(context["pwd"])
+
+    # If no shell integration, fall back to Python's view
+    if not context["pwd"]:
+        context["pwd"] = os.getcwd()
+
+    log(f"Shell context: v3_mode={context['v3_mode']}, pwd={context['pwd']}, shell={context['shell']}")
+    return context
 
 
 def get_console_output_context():
@@ -684,64 +835,51 @@ def extract_model_response(response):
 
 def show_help():
     """Display detailed help information"""
+    shell_context = get_shell_context()
+    cmd = COMMAND_NAME
+
     help_text = f"""
 # AiTermy Terminal Assistant v{VERSION}
 
-## Interactive Mode (Recommended)
+## Quick Start
 ```
- {os.environ.get("COMMAND_NAME", "termy")}
+{cmd} "Your question here"    # Ask anything
+{cmd}                         # Interactive mode
 ```
-Just type the command name to enter interactive mode with a friendly interface!
 
-## Command Line Usage
-```
-ai "Your question here"
-```
+## Features
+* **Automatic context** - AiTermy knows your current directory, recent commands, and shell
+* **Conversation memory** - Follow-up questions remember previous context
+* **File context** - Include files for code analysis
 
 ## Options
-* `-l, --lines <number>` - Include recent terminal output as context (default: {DEFAULT_LINES} lines)
-* `-f, --file <filename>` - Include file content as context
-  * For a single file: `-f filename.py`
-  * For multiple files: `-f file1.py -f file2.py -f file3.py`
-* `-F, --files <list>` - Alternative way to include multiple files using a comma-separated list
-  * Example: `-F "main.js,utils.js,config.js"`
+* `-n, --new` - Start a fresh conversation
+* `-c, --continue` - Explicitly continue previous conversation
+* `-f, --file <path>` - Include file content (can use multiple times)
+* `-F, --files <list>` - Comma-separated list of files
+* `-l, --lines <n>` - Include N lines of terminal history (legacy mode)
 
-## File Usage Examples
+## Examples
 ```
-# Single file
- {os.environ.get("COMMAND_NAME", "termy")} "Explain this code" -f app.js
-
-# Multiple files using repeated -f
- {os.environ.get("COMMAND_NAME", "termy")} "Compare these implementations" -f file1.py -f file2.py
-
-# Multiple files using comma-separated list
- {os.environ.get("COMMAND_NAME", "termy")} "Find bugs in these components" -F "header.jsx,sidebar.jsx,footer.jsx"
+{cmd} "What's in this directory?"           # Uses current context
+{cmd} "Explain this code" -f main.py        # With file
+{cmd} "Compare these" -f a.py -f b.py       # Multiple files
+{cmd} -n "New topic"                        # Start fresh
+{cmd} "Tell me more"                        # Follow-up
 ```
 
-## Conversation Behavior
-* By default, `{os.environ.get("COMMAND_NAME", "termy")} "question"` continues your previous conversation
-* Use `-n` to start a new conversation when needed
-* Use `-c` when you want to explicitly mark a question as continuing the conversation
-* Conversation history is stored in `~/.aitermy/conversations/`
+## Interactive Mode
+Just run `{cmd}` without arguments for an interactive session with commands:
+* `/help` - Show help
+* `/history` - View conversation
+* `/clear` - Clear conversation
+* `/model` - Show current model
+* `/quit` - Exit
 
-## More Examples
-```
- {os.environ.get("COMMAND_NAME", "termy")} "What does this error mean?" -l 20
- {os.environ.get("COMMAND_NAME", "termy")} "How to fix this bug?" -l 10 -f error.log
- {os.environ.get("COMMAND_NAME", "termy")} -n "Let's discuss a new topic"
- {os.environ.get("COMMAND_NAME", "termy")} "Can you tell me more about that?" # Continues conversation by default
-```
-
-## Current Configuration
+## Configuration
+* Config file: `~/.aitermy/config.toml`
 * Model: {OPENROUTER_MODEL}
-* API: OpenRouter
-
-## Tips
-* For code-related questions, include the relevant file with -f
-* For error analysis, include terminal output with -l
-* For code comparison or complex projects, use multiple files
-* Conversations are maintained automatically between commands
-* Use interactive mode for the best experience!
+* Context: {'V3 shell integration active' if shell_context.get('v3_mode') else 'Legacy mode'}
 """
     console.print(Panel(Markdown(help_text), title="AiTermy Help", border_style="cyan"))
 
@@ -872,12 +1010,11 @@ def main():
         load_conversation_history() if (args.continue_convo or not args.new) else []
     )
 
-    # Build the system message
-    os_type = "macOS" if sys.platform == "darwin" else "Linux"
-    system_message = f"You are a helpful terminal assistant. You are running on {os_type}. Current location is {os.getcwd()}. "
-    system_message += "Provide concise, direct answers suitable for terminal output. Use Markdown formatting where appropriate (like code blocks), but avoid overly long paragraphs. Focus directly on the user's question."
+    # Get shell context and build system message
+    shell_context = get_shell_context()
+    system_message = build_system_message(shell_context)
     log(
-        f"Building system message with OS type: {os_type}, current directory: {os.getcwd()}, and conciseness instructions"
+        f"Built system message: v3_mode={shell_context.get('v3_mode')}, pwd={shell_context.get('pwd')}"
     )
 
     # Initialize messages with system message if no history
@@ -892,21 +1029,28 @@ def main():
     context_added = False
     console_context = ""
 
-    if (hasattr(args, "lines") or not args.continue_convo) and not args.question:
-        # Only add terminal context for new questions, not continuations
-        lines_to_use = getattr(args, "lines", DEFAULT_LINES)
-        terminal_context = get_terminal_context(lines_to_use, COMMAND_NAME)
-        if "Recent Terminal History" in terminal_context:
-            user_prompt += f"\n\n{terminal_context}"
-            context_added = True
+    # V3 mode: shell history is already in system message from shell integration
+    # V2 fallback: read from history file
+    if not shell_context.get("v3_mode"):
+        if (hasattr(args, "lines") or not args.continue_convo) and not args.question:
+            # Only add terminal context for new questions, not continuations
+            lines_to_use = getattr(args, "lines", DEFAULT_LINES)
+            terminal_context = get_terminal_context(lines_to_use, COMMAND_NAME)
+            if "Recent Terminal History" in terminal_context:
+                user_prompt += f"\n\n{terminal_context}"
+                context_added = True
 
-    # Add console output context automatically
-    if CONSOLE_OUTPUT_ENABLED:
-        console_context = get_console_output_context()
-        if console_context:
-            user_prompt += f"\n\n{console_context}"
-            context_added = True
-            log("Added console output context")
+        # Add console output context automatically (legacy V2 mechanism)
+        if CONSOLE_OUTPUT_ENABLED:
+            console_context = get_console_output_context()
+            if console_context:
+                user_prompt += f"\n\n{console_context}"
+                context_added = True
+                log("Added console output context")
+    else:
+        # V3 mode: context is already in system message
+        context_added = True
+        log("Using V3 shell context (already in system message)")
 
     # Handle multiple files
     if all_files:
@@ -967,10 +1111,16 @@ def main():
         # Show context information that was used
         if context_added:
             context_info = []
-            if hasattr(args, "lines"):
-                context_info.append(f"{args.lines} lines of terminal output")
-            if CONSOLE_OUTPUT_ENABLED and console_context:
-                context_info.append("recent console outputs")
+
+            # V3 mode indicator
+            if shell_context.get("v3_mode"):
+                context_info.append(f"shell context from {shell_context.get('shell', 'shell')}")
+            else:
+                if hasattr(args, "lines"):
+                    context_info.append(f"{args.lines} lines of terminal output")
+                if CONSOLE_OUTPUT_ENABLED and console_context:
+                    context_info.append("recent console outputs")
+
             if all_files:
                 if len(all_files) == 1:
                     context_info.append(f"content from {all_files[0]}")
@@ -979,16 +1129,17 @@ def main():
                         f"content from {len(all_files)} files: {', '.join(all_files)}"
                     )
 
-            context_str = " and ".join(context_info)
-            log(f"Context used: {context_str}")
+            if context_info:
+                context_str = " and ".join(context_info)
+                log(f"Context used: {context_str}")
 
-            context_panel = Panel(
-                f"[dim]{context_str}[/dim]",
-                title="[dim]Context Used[/dim]",
-                border_style="dim blue",
-                padding=(0, 1),
-            )
-            console.print(context_panel)
+                context_panel = Panel(
+                    f"[dim]{context_str}[/dim]",
+                    title="[dim]Context Used[/dim]",
+                    border_style="dim blue",
+                    padding=(0, 1),
+                )
+                console.print(context_panel)
 
         # Show conversation status
         conversation_turns = (
