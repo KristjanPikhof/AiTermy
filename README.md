@@ -1,113 +1,106 @@
 # AiTermy - Terminal AI Assistant
 
-A powerful terminal AI assistant powered by OpenRouter, providing contextual assistance directly in your terminal. AiTermy can analyze your terminal output, file contents, or both to provide relevant and helpful responses.
+A powerful terminal AI assistant powered by OpenRouter, providing contextual assistance directly in your terminal. AiTermy knows your current directory, recent commands, and shell environment - it sees what you see.
 
 <p align="center">  <img width="830" height="925" alt="SCR-20251210-tmhl-modified" src="https://github.com/user-attachments/assets/c547cf0e-83c4-4b42-a2e8-bd3256e0fd84" /> </p>
 
-
 ## Features
 
+*   **Automatic Context Awareness**: AiTermy knows your current directory, recent commands, and shell environment automatically - no manual flags needed.
+*   **Multiple Shell Support**: Works with Zsh and Bash on macOS and Linux.
 *   **Multiple AI Models**: Choose from various models available through OpenRouter.
-*   **Contextual Awareness**: Includes recent terminal history, file contents, and console output.
-*   **Console Output Context**: Automatically captures and includes recent command outputs for enhanced context.
 *   **Persistent Conversations**: Maintains conversation history between commands for natural follow-up questions.
-*   **Multi-File Analysis**: Process and analyze multiple files at once for code comparison, debugging, or comprehension.
-*   **Cross-Platform**: Works on both macOS and Linux.
+*   **Multi-File Analysis**: Process and analyze multiple files at once for code comparison or debugging.
 *   **Rich Formatting**: Provides formatted output using Markdown.
-*   **Easy Setup & Updates**: Simple installation script with guided configuration that handles updates gracefully.
-*   **Custom Command Name**: Choose your own command to invoke the assistant.
-*   **Optional Logging**: Log interactions for debugging.
-*   **Configurable Console Output**: Control token limits and enable/disable console output capture.
+*   **Easy Setup**: One-command installation with guided configuration.
+*   **Custom Command Name**: Choose your own command to invoke the assistant (default: `ai`).
 
 ## Requirements
 
-*   **Python 3**: The script automatically detects `python3` or `python` and its associated `pip`.
-*   **Zsh shell**: Configuration is added to `~/.zshrc`.
+*   **Python 3.11+**: The installer automatically sets up a virtual environment.
+*   **Zsh or Bash shell**: Automatic shell integration.
 *   **Git**: For cloning the repository.
 *   An **OpenRouter API key**: Get one free at [openrouter.ai/keys](https://openrouter.ai/settings/keys).
 
-## Installation & Setup
+## Installation (V3)
 
 1.  **Clone the repository:**
     ```bash
-    # Make sure you have git installed!
     git clone git@github.com:KristjanPikhof/AiTermy.git
     cd AiTermy
     ```
 
-2.  **Make the setup script executable:**
+2.  **Run the installer:**
     ```bash
-    chmod +x setup.sh
+    ./install.sh
     ```
 
-3.  **Run the setup script (DO NOT use sudo):**
-    ```bash
-    ./setup.sh
-    ```
-    **Important:** Run the script as your regular user, not with `sudo`, as it needs to modify your user-specific files (`~/.zshrc`, `~/.env`) and create files in the chosen directory.
+    The installer will:
+    *   Detect your shell (Zsh or Bash)
+    *   Prompt for your OpenRouter API key
+    *   Let you choose your preferred AI model
+    *   Set up a Python virtual environment
+    *   Add shell integration to your rc file
 
-    The setup script will:
-    *   Check for Python 3 and pip.
-    *   Ask for your preferred installation directory (defaults to the current directory).
-    *   Prompt for your OpenRouter API key.
-    *   Let you choose your preferred AI model from a list (or enter any valid OpenRouter model).
-    *   Ask for a custom command name (e.g., `ai`, `ask`, `termy`).
-    *   Ask about console output capture settings (enabled by default, with token limits).
-    *   Create/update a `.env` file in the installation directory with your configuration.
-    *   Ask for permission to add its configuration source line to your `~/.zshrc`.
-    *   Ask to set up a Python virtual environment (`venv`) and install dependencies.
-    *   Attempt to source `~/.zshrc` to make the command immediately available.
+3.  **Start using AiTermy:**
+    ```bash
+    source ~/.zshrc  # or ~/.bashrc
+    ai "Hello!"
+    ```
+
+## Quick Upgrade from V2
+
+If you have an existing V2 installation, the V3 installer will:
+*   Detect your existing configuration
+*   Migrate your API key and model settings
+*   Replace the old shell integration with the new one
+
+Just run `./install.sh` and follow the prompts.
 
 ## Updating
 
-1.  Navigate to the installation directory:
+1.  Pull the latest changes:
     ```bash
     cd /path/to/your/AiTermy
+    git pull origin main
     ```
-2.  Pull the latest changes:
+2.  Re-run the installer:
     ```bash
-    git pull origin main # Or the appropriate branch
+    ./install.sh
     ```
-3.  Re-run the setup script:
-    ```bash
-    ./setup.sh
-    ```
-    The script will detect your existing `.env` file and ask if you want to keep your current API key and model, preventing accidental configuration loss. It will also update dependencies if you choose to set up the virtual environment again.
+    The installer will detect your existing configuration and preserve your settings.
 
 ## Usage
 
-Replace `termy` in the examples below with the command name you chose during setup (defaults to `termy`).
+Replace `ai` in the examples below with your custom command name if you changed it during setup.
 
 ```bash
-# Basic question
-termy "How do I list files sorted by size?"
+# Basic question - AiTermy automatically knows your context
+ai "How do I list files sorted by size?"
 
-# Include the last 20 lines of terminal history as context
-termy "What does the previous error message mean?" -l 20
+# AiTermy knows your recent commands, so just ask about them
+ai "What does that error mean?"
 
-# Include the content of a file as context
-termy "Explain the main function in this script" -f my_script.py
+# Include a file for code analysis
+ai "Explain this code" -f my_script.py
 
-# Include multiple files using repeated -f flags
-termy "Compare these two implementations" -f implementation1.js -f implementation2.js
+# Compare multiple files
+ai "Compare these implementations" -f file1.py -f file2.py
 
-# Include multiple files using a comma-separated list
-termy "Find bugs in these files" -F "main.py,utils.py,config.py"
+# Or use comma-separated list
+ai "Find bugs in these" -F "main.py,utils.py"
 
-# Combine history and file context
-termy "Why is this test failing?" -l 15 -f test_output.log
+# Follow-up questions remember context
+ai "Can you explain that in more detail?"
 
-# Ask a follow-up question (continues previous conversation by default)
-termy "Can you explain that in more detail?"
+# Start a fresh conversation
+ai -n "New topic"
 
-# Start a new conversation explicitly
-termy -n "Let's talk about something else"
+# Interactive mode for extended sessions
+ai
 
-# Get help (shows options and current model)
-termy -h
-
-# Check version
-termy -v
+# Get help
+ai --help
 ```
 
 ## Working with Multiple Files
@@ -147,42 +140,72 @@ After each response, AiTermy shows:
 2. How to continue the conversation
 3. How to start a new conversation
 
-## Console Output Context
+## How Context Works (V3)
 
-AiTermy can automatically include recent console output in the AI's context, allowing it to see the results of your recent terminal commands. This helps the AI provide more relevant and contextual responses.
+AiTermy V3 uses shell integration to capture real-time context:
 
-**Features:**
-- Automatic capture of current directory, recent commands, and system information
-- Configurable token limits to avoid exceeding API constraints
-- Manual capture of specific command outputs using `ai-capture`
-- Intelligent context inclusion based on your configuration
+*   **Current directory**: Your actual shell's working directory (not where AiTermy is installed)
+*   **Recent commands**: The last 20 commands from your shell session
+*   **Last command status**: Whether your last command succeeded or failed
+*   **Shell info**: Your shell type (zsh/bash) and version
 
-**Configuration:**
-Console output capture is **enabled by default** and controlled by environment variables in your `.env` file. See the Configuration section below for details.
+This context is passed to the AI automatically - you don't need to specify `-l` flags anymore.
 
-**Usage:**
-- Console output is automatically included when you run `termy` commands
-- The AI will reference recent console activity in its responses
+## Configuration
 
-## Configuration (`.env` file)
+V3 uses a TOML configuration file at `~/.aitermy/config.toml`:
 
-The setup script creates a `.env` file in the installation directory. You can manually edit this file:
+```toml
+[api]
+key = "sk-or-your-key"
+model = "x-ai/grok-4.1-fast"
 
-*   `OPENROUTER_API_KEY`: Your key (starts with `sk-or-`). **Required**.
-*   `OPENROUTER_MODEL`: The model ID to use (e.g., `x-ai/grok-4.1-fast`). **Required**.
-*   `COMMAND_NAME`: The command used to run the tool (set during setup).
-*   `LOGGING_ENABLED`: Set to `true` to enable logging. Defaults to `false`. **Optional**.
-*   `LOG_FILE`: Path for the log file if enabled (e.g., `~/.aitermy/logs/aitermy.log`). Defaults to `~/.aitermy/logs/aitermy.log`. **Optional**.
-*   `CONSOLE_OUTPUT_ENABLED`: Enable/disable automatic console output capture for AI context. Defaults to `true` (enabled by default in setup). **Optional**.
-*   `CONSOLE_OUTPUT_MAX_TOKENS`: Maximum tokens for console output context (rough estimation: 4 characters = 1 token). Defaults to `2000`. **Optional**.
-*   `CONSOLE_OUTPUT_MAX_ITEMS`: Maximum number of recent console output items to include. Defaults to `10`. **Optional**.
+[context]
+include_history = true
+history_lines = 20
+max_context_tokens = 2000
 
-Remember to restart your terminal or run `source ~/.zshrc` after manually editing `.env` or `.aitermy_config.zsh` if the changes aren't reflected immediately.
+[ui]
+command = "ai"
+
+[logging]
+enabled = false
+file = "~/.aitermy/logs/aitermy.log"
+
+[conversation]
+max_turns = 10
+```
+
+### Key Settings
+
+*   `api.key`: Your OpenRouter API key (required)
+*   `api.model`: The model to use (browse at [openrouter.ai/models](https://openrouter.ai/models))
+*   `ui.command`: The command name to invoke AiTermy
+*   `context.history_lines`: Number of recent commands to include
+*   `logging.enabled`: Enable debug logging
+
+After editing the config, open a new terminal for changes to take effect.
 
 ## Troubleshooting
 
-*   **Command not found:** Ensure the `source "/path/to/your/AiTermy/.aitermy_config.zsh"` line is in your `~/.zshrc` and run `source ~/.zshrc` or restart your terminal.
-*   **API Errors:** Double-check your `OPENROUTER_API_KEY` in the `.env` file and ensure it's valid and has credits/access at OpenRouter.
-*   **Permission Errors during setup:** Ensure you are *not* running `./setup.sh` with `sudo`.
-*   **File Not Found (during use):** Make sure the path provided with `-f` is correct relative to your current working directory.
-*   **Check Logs:** If logging is enabled (`LOGGING_ENABLED=true` in `.env`), check the file specified by `LOG_FILE` for detailed error messages.
+*   **Command not found:** Run `source ~/.zshrc` (or `~/.bashrc`) or open a new terminal. Check that the source line is in your rc file.
+*   **API Errors:** Check your API key in `~/.aitermy/config.toml`. Ensure it starts with `sk-or-` and is valid.
+*   **Context not working:** Ensure you're using the shell integration (the `ai` function, not calling the Python script directly).
+*   **File Not Found:** Make sure the path with `-f` is correct relative to your current directory.
+*   **Check Logs:** Enable logging in config.toml and check `~/.aitermy/logs/aitermy.log`.
+
+## Directory Structure (V3)
+
+```
+~/.aitermy/
+├── bin/aitermy.py          # Main script
+├── config.toml             # Configuration
+├── shell/
+│   ├── ai.zsh              # Zsh integration
+│   └── ai.bash             # Bash integration
+├── venv/                   # Python virtual environment
+├── data/
+│   ├── conversations/      # Conversation history
+│   └── sessions/           # Terminal session data
+└── logs/                   # Log files (if enabled)
+```
