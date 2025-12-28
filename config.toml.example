@@ -1,0 +1,42 @@
+# AiTermy V3 Configuration
+# Copy this file to ~/.aitermy/config.toml and customize
+
+[api]
+# OpenRouter API key (required)
+# Get your key at: https://openrouter.ai/keys
+key = "sk-or-your-api-key-here"
+
+# Model to use (default: x-ai/grok-4.1-fast)
+# Browse models at: https://openrouter.ai/models
+model = "x-ai/grok-4.1-fast"
+
+[context]
+# Include recent terminal commands in context
+include_history = true
+
+# Number of recent commands to include (default: 20)
+history_lines = 20
+
+# Include relevant environment variables
+include_env = true
+
+# Maximum tokens for console output context (default: 2000)
+max_context_tokens = 2000
+
+[ui]
+# Command name to invoke AiTermy (default: ai)
+command = "ai"
+
+[logging]
+# Enable debug logging
+enabled = false
+
+# Log file location
+file = "~/.aitermy/logs/aitermy.log"
+
+[conversation]
+# Maximum conversation turns to keep (default: 10)
+max_turns = 10
+
+# Conversation storage location
+storage_dir = "~/.aitermy/data/conversations"
