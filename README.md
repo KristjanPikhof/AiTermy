@@ -187,37 +187,43 @@ max_turns = 10
 
 After editing the config, open a new terminal for changes to take effect.
 
-## Limitations
+## Output Capture
 
-**Command Output Not Captured:**
+**Automatic Capture (V3):**
 
-AiTermy V3 captures metadata about commands (what you ran, exit status) but does NOT capture command output (stdout/stderr). The AI knows:
-- ✓ Your current directory
-- ✓ Recent command history (last 20 commands)
-- ✓ What command you just ran
-- ✓ Whether the last command succeeded or failed
-
-The AI does NOT know:
-- ✗ The output of commands (what was printed to the terminal)
-- ✗ Error messages from failed commands
-- ✗ Content displayed by commands
-
-**Workarounds:**
-If you need the AI to analyze command output:
-1. **Save to file:** `command > output.txt && ai "analyze this" -f output.txt`
-2. **Paste output:** Copy output and paste it into your question
-3. **Interactive mode:** Use `ai` without arguments and paste output in the session
+AiTermy V3 automatically captures the output of your last command (up to 10KB). The AI can now see:
+- ✓ Command output (stdout/stderr)
+- ✓ Error messages
+- ✓ Directory listings
+- ✓ Command results
 
 **Example:**
 ```bash
-# This WON'T work - AI can't see the output
 ls -la
-ai "what files are in this directory?"  # AI can only infer based on the command
+ai "what files are in this directory?"  # AI sees the ls output!
 
-# This WILL work - output is provided to AI
-ls -la > files.txt
-ai "what files are in this directory?" -f files.txt
+curl https://api.example.com/data
+ai "what was the response?"  # AI sees the curl output!
+
+npm install
+ai "did it succeed?"  # AI sees installation output and any errors
 ```
+
+**Privacy & Control:**
+- **Disable capture**: `export AITERMY_CAPTURE_OUTPUT=0` (add to ~/.zshrc to make permanent)
+- **Excluded**: Interactive programs (vim, ssh, tmux, nano, etc.) are automatically skipped
+- **Filtered**: Binary output automatically detected and not shown
+- **Limited**: 10KB per command (truncated if larger to save tokens)
+
+**Not captured:**
+- Commands with output redirected to files (`cmd > file.txt` - output goes to file)
+- Background jobs (`cmd &` - run in background)
+- Interactive TUI programs (vim, ssh, tmux, etc. - automatically skipped)
+
+**Performance:**
+- Minimal overhead (~50ms after each command)
+- Output files are rotated automatically (only last command kept)
+- Stored in `~/.aitermy/data/sessions/` (user-owned directory)
 
 ## Troubleshooting
 
