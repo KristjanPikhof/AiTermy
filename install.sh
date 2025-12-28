@@ -246,6 +246,11 @@ command = "$COMMAND_NAME"
 enabled = false
 file = "~/.aitermy/logs/aitermy.log"
 
+[output_capture]
+enabled = true
+max_size = 10240
+max_system_chars = 4000
+
 [conversation]
 max_turns = 10
 storage_dir = "~/.aitermy/data/conversations"
@@ -253,6 +258,8 @@ EOF
 
     chmod 600 "$AITERMY_HOME/config.toml"
     success "Configuration saved"
+    info "✓ Output capture enabled by default (AI will see command output)"
+    info "  To disable: export AITERMY_CAPTURE_OUTPUT=0"
 }
 
 # Create virtual environment

@@ -40,3 +40,14 @@ max_turns = 10
 
 # Conversation storage location
 storage_dir = "~/.aitermy/data/conversations"
+
+[output_capture]
+# Enable automatic capture of command output (default: true)
+enabled = true
+
+# Maximum bytes to read from output file (default: 10KB)
+max_size = 10240
+
+# Maximum characters to include in system message (default: 4KB)
+# Applied after reading max_size, to control token usage
+max_system_chars = 4000

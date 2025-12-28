@@ -115,6 +115,11 @@ def load_config():
             "max_turns": 10,
             "storage_dir": "~/.aitermy/data/conversations",
         },
+        "output_capture": {
+            "enabled": os.environ.get("OUTPUT_CAPTURE_ENABLED", "true").lower() == "true",
+            "max_size": int(os.environ.get("OUTPUT_CAPTURE_MAX_SIZE", "10240")),
+            "max_system_chars": int(os.environ.get("OUTPUT_CAPTURE_MAX_SYSTEM_CHARS", "4000")),
+        },
     }
     return config
 
@@ -149,7 +154,8 @@ CONTEXT_INCLUDE_HISTORY = CONFIG.get("context", {}).get("include_history", True)
 CONTEXT_MAX_TOKENS = CONFIG.get("context", {}).get("max_context_tokens", 2000)
 
 # Legacy console output configuration (for backward compatibility)
-CONSOLE_OUTPUT_ENABLED = True
+# DISABLED: Now using V3 output capture via get_shell_context()
+CONSOLE_OUTPUT_ENABLED = False
 CONSOLE_OUTPUT_MAX_TOKENS = CONTEXT_MAX_TOKENS
 CONSOLE_OUTPUT_MAX_ITEMS = 10
 
@@ -222,9 +228,21 @@ def build_system_message(shell_context=None):
         # Add last command and its exit status
         last_cmd = shell_context.get("last_cmd", "")
         last_status = shell_context.get("last_status", "0")
+        last_output = shell_context.get("last_output", "")
+
         if last_cmd:
             status_text = "succeeded" if last_status == "0" else f"failed (exit code {last_status})"
             system_message += f"\n\nLast command: {last_cmd} ({status_text})"
+
+            # Include output if available
+            if last_output and last_output != "[binary output - not shown]":
+                max_chars = CONFIG.get("output_capture", {}).get("max_system_chars", 4000)
+                if len(last_output) > max_chars:
+                    system_message += f"\n\nOutput:\n{last_output[:max_chars]}\n[... truncated ...]"
+                else:
+                    system_message += f"\n\nOutput:\n{last_output}"
+            elif last_output == "[binary output - not shown]":
+                system_message += f"\n\nOutput: {last_output}"
 
     system_message += "\n\nProvide concise, direct answers suitable for terminal output. "
     system_message += "Use Markdown formatting where appropriate (like code blocks), but avoid overly long paragraphs. "
@@ -617,6 +635,15 @@ def start_new_conversation():
         log(f"Error clearing conversation history: {e}", "ERROR")
 
 
+def is_binary_output(data):
+    """Detect if output is binary/non-text"""
+    if not data or b'\x00' in data:
+        return True
+
+    non_printable = sum(1 for b in data if (b < 32 and b not in {10, 13, 9, 32}) or b > 126)
+    return non_printable > len(data) * 0.1
+
+
 def get_shell_context():
     """Get context passed from shell integration (V3 approach)"""
     context = {
@@ -632,7 +659,32 @@ def get_shell_context():
         "tty": os.environ.get("AITERMY_TTY", ""),
         "user": os.environ.get("AITERMY_USER", os.environ.get("USER", "")),
         "host": os.environ.get("AITERMY_HOST", ""),
+        "last_output": "",
     }
+
+    # Read last command output
+    tty_id = context.get("tty", "")
+    if tty_id:
+        session_dir = os.path.expanduser("~/.aitermy/data/sessions")
+        output_file = os.path.join(session_dir, f"last_output_{tty_id}")
+
+        if os.path.exists(output_file):
+            try:
+                max_bytes = CONFIG.get("output_capture", {}).get("max_size", 10240)
+                with open(output_file, 'rb') as f:
+                    output_bytes = f.read(max_bytes)
+
+                if is_binary_output(output_bytes):
+                    context["last_output"] = "[binary output - not shown]"
+                    log("Last command output appears to be binary, skipping")
+                else:
+                    output_text = output_bytes.decode('utf-8', errors='replace')
+                    if len(output_bytes) >= max_bytes:
+                        output_text += f"\n[... truncated at {max_bytes} bytes ...]"
+                    context["last_output"] = output_text
+                    log(f"Loaded last command output: {len(output_text)} chars")
+            except Exception as e:
+                log(f"Error reading last command output: {e}", "ERROR")
 
     # Defensive: Filter out self-invocations as safety net
     # Shell should already handle this, but double-check
