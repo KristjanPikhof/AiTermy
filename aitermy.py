@@ -634,6 +634,13 @@ def get_shell_context():
         "host": os.environ.get("AITERMY_HOST", ""),
     }
 
+    # Defensive: Filter out self-invocations as safety net
+    # Shell should already handle this, but double-check
+    command_name = CONFIG.get("ui", {}).get("command", "ai")
+    if context["last_cmd"].startswith(f"{command_name} "):
+        context["last_cmd"] = ""  # Clear if it's the AI command itself
+        log("Filtered self-invocation from last_cmd")
+
     # Check if we have V3 shell integration (AITERMY_PWD is set)
     context["v3_mode"] = bool(context["pwd"])
 

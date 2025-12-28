@@ -67,8 +67,15 @@ COMMAND_PLACEHOLDER() {
     local shell_history
     shell_history="$(history 20 2>/dev/null | sed 's/^[[:space:]]*[0-9]*[[:space:]]*//')"
 
-    # Get last command and its status
-    local last_cmd="${AITERMY_LAST_CMD:-}"
+    # Get last command from session file (to avoid self-capture)
+    # The precmd hook moves current_command to last_command BEFORE this runs
+    local last_cmd=""
+    local session_file="${AITERMY_SESSION_DIR}/last_command_${AITERMY_TTY_ID}"
+    if [[ -f "$session_file" ]]; then
+        last_cmd="$(cat "$session_file" 2>/dev/null || echo '')"
+    fi
+
+    # Get last command status (still from env var)
     local last_status="${AITERMY_LAST_STATUS:-0}"
 
     # Get terminal size for better formatting

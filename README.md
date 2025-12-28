@@ -187,6 +187,38 @@ max_turns = 10
 
 After editing the config, open a new terminal for changes to take effect.
 
+## Limitations
+
+**Command Output Not Captured:**
+
+AiTermy V3 captures metadata about commands (what you ran, exit status) but does NOT capture command output (stdout/stderr). The AI knows:
+- ✓ Your current directory
+- ✓ Recent command history (last 20 commands)
+- ✓ What command you just ran
+- ✓ Whether the last command succeeded or failed
+
+The AI does NOT know:
+- ✗ The output of commands (what was printed to the terminal)
+- ✗ Error messages from failed commands
+- ✗ Content displayed by commands
+
+**Workarounds:**
+If you need the AI to analyze command output:
+1. **Save to file:** `command > output.txt && ai "analyze this" -f output.txt`
+2. **Paste output:** Copy output and paste it into your question
+3. **Interactive mode:** Use `ai` without arguments and paste output in the session
+
+**Example:**
+```bash
+# This WON'T work - AI can't see the output
+ls -la
+ai "what files are in this directory?"  # AI can only infer based on the command
+
+# This WILL work - output is provided to AI
+ls -la > files.txt
+ai "what files are in this directory?" -f files.txt
+```
+
 ## Troubleshooting
 
 *   **Command not found:** Run `source ~/.zshrc` (or `~/.bashrc`) or open a new terminal. Check that the source line is in your rc file.
