@@ -40,14 +40,15 @@ _aitermy_debug_trap() {
 
     # Skip the AI command itself (to avoid capturing its own output)
     # Note: COMMAND_PLACEHOLDER will be replaced with actual command name by installer
+    # Also skip interactive CLIs which need proper TTY handling
     case "$cmd" in
-        COMMAND_PLACEHOLDER\ *|COMMAND_PLACEHOLDER)
+        COMMAND_PLACEHOLDER\ *|COMMAND_PLACEHOLDER|claude\ *|claude|ccr\ *|ccr|code\ *|code|crush\ *|crush|opencode\ *|opencode)
             return ;;
     esac
 
     # Skip interactive commands (use case pattern matching)
     case "$cmd" in
-        vim\ *|vi\ *|nvim\ *|nano\ *|emacs\ *|less\ *|more\ *|man\ *|top\ *|htop\ *|btop\ *|ssh\ *|tmux\ *|screen\ *)
+        vim\ *|vi\ *|nvim\ *|nano\ *|emacs\ *|less\ *|more\ *|man\ *|top\ *|htop\ *|btop\ *|ssh\ *|tmux\ *|screen\ *|claude\ *|claude|ccr\ *|ccr|code\ *|code|crush\ *|crush|opencode\ *|opencode)
             return ;;
     esac
 
